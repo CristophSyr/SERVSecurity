@@ -1,0 +1,29 @@
+# Archivos generados automáticamente
+data/servsecurity.db
+captures/*.jpg
+captures/*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# YOLOv8 weights (se descargan automáticamente)
+*.pt
+runs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Temporales
+*.tmp
+*.log
+.DS_Store
