@@ -1,6 +1,3 @@
-# Dependencias del sistema para Hugging Face Spaces y Streamlit Cloud
-# Necesarias para que OpenCV funcione sin pantalla (headless)
-libgl1-mesa-glx
 libglib2.0-0
 libsm6
 libxrender1
