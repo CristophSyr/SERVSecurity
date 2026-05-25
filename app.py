@@ -21,6 +21,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
+import av
+
 # Módulos propios
 from database import (
     init_db,
@@ -219,6 +222,81 @@ def _init_state():
 
 _init_state()
 
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
+
+def make_webrtc_processor(
+    confidence,
+    zone_percent,
+    max_perm,
+    hour_start,
+    hour_end,
+    use_overlap,
+    capture_interval,
+):
+    class SERVSecurityWebRTCProcessor(VideoProcessorBase):
+        def __init__(self):
+            self.detector = PersonDetector(
+                model_name="yolov8n.pt",
+                confidence=confidence,
+            )
+            self.rules_engine = RulesEngine(
+                zone=(0, 0, 100, 100),
+                max_permanence_sec=max_perm,
+                allowed_start=hour_start,
+                allowed_end=hour_end,
+                use_overlap=use_overlap,
+            )
+            self.last_capture_time = 0.0
+
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+            img = resize_frame(img, max_width=800)
+
+            h, w = img.shape[:2]
+
+            zone_px = normalize_zone(zone_percent, w, h)
+            self.rules_engine.update_zone(zone_px)
+
+            detections = self.detector.detect(img)
+            alerts, events = self.rules_engine.evaluate(detections)
+
+            has_alert = any(alerts)
+
+            annotated = draw_detections(
+                img,
+                detections,
+                alerts,
+                zone=zone_px,
+                zone_active=True,
+            )
+
+            now_ts = time.time()
+            cap_path = ""
+
+            if (has_alert or len(detections) > 0) and (
+                now_ts - self.last_capture_time >= capture_interval
+            ):
+                cap_path = save_capture(
+                    annotated,
+                    prefix="alerta" if has_alert else "presencia",
+                )
+                self.last_capture_time = now_ts
+
+            for event in events:
+                insert_event(
+                    tipo_evento=event["tipo_evento"],
+                    estado=event["estado"],
+                    duracion=event["duracion"],
+                    captura=cap_path,
+                    detalle=event.get("detalle", ""),
+                )
+
+            return av.VideoFrame.from_ndarray(annotated, format="bgr24")
+
+    return SERVSecurityWebRTCProcessor
 
 # ════════════════════════════════════════════════════════════════════════════
 # SIDEBAR – Configuración
@@ -413,22 +491,31 @@ with info_col:
 # ════════════════════════════════════════════════════════════════════════════
 if btn_start and not st.session_state.running:
     try:
-        with st.spinner("Cargando modelo YOLOv8…"):
-            st.session_state.detector = PersonDetector(
-                model_name="yolov8n.pt",
-                confidence=confidence,
+        if "Subir" in video_source:
+            with st.spinner("Cargando modelo YOLOv8…"):
+                st.session_state.detector = PersonDetector(
+                    model_name="yolov8n.pt",
+                    confidence=confidence,
+                )
+
+            st.session_state.rules_engine = RulesEngine(
+                zone=(0, 0, 100, 100),
+                max_permanence_sec=max_perm,
+                allowed_start=hour_start,
+                allowed_end=hour_end,
+                use_overlap=use_overlap,
             )
-        st.session_state.rules_engine = RulesEngine(
-            zone=(0, 0, 100, 100),   # se actualiza en el loop
-            max_permanence_sec=max_perm,
-            allowed_start=hour_start,
-            allowed_end=hour_end,
-            use_overlap=use_overlap,
-        )
-        st.session_state.running      = True
-        st.session_state.frame_count  = 0
+        else:
+            # En Streamlit Cloud la webcam se maneja con WebRTC,
+            # no con cv2.VideoCapture(0).
+            st.session_state.detector = None
+            st.session_state.rules_engine = None
+
+        st.session_state.running = True
+        st.session_state.frame_count = 0
         st.session_state.alert_active = False
         st.rerun()
+
     except Exception as e:
         st.error(f"❌ Error al iniciar el detector: {e}")
 
@@ -441,20 +528,50 @@ if btn_stop and st.session_state.running:
 # LOOP DE PROCESAMIENTO DE VIDEO
 # ════════════════════════════════════════════════════════════════════════════
 if st.session_state.running:
+
+    # ── Webcam del navegador usando WebRTC ────────────────────────────────
+    if "Webcam" in video_source:
+        with vid_col:
+            st.info(
+                "La cámara se abrirá desde tu navegador. "
+                "Acepta el permiso de cámara cuando aparezca."
+            )
+
+            webrtc_streamer(
+                key="servsecurity-webrtc",
+                mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTC_CONFIGURATION,
+                video_processor_factory=make_webrtc_processor(
+                    confidence=confidence,
+                    zone_percent=(zone_x1, zone_y1, zone_x2, zone_y2),
+                    max_perm=max_perm,
+                    hour_start=hour_start,
+                    hour_end=hour_end,
+                    use_overlap=use_overlap,
+                    capture_interval=capture_interval,
+                ),
+                media_stream_constraints={
+                    "video": True,
+                    "audio": False,
+                },
+                async_processing=True,
+            )
+
+        with info_col:
+            st.markdown("### 📹 Modo Webcam WebRTC")
+            st.write("La detección se procesa directamente desde el video del navegador.")
+            st.write("Si el navegador pide permisos, selecciona **Permitir cámara**.")
+
+        st.stop()
+
     detector     = st.session_state.detector
     rules_engine = st.session_state.rules_engine
 
-    # ── Abrir fuente de video ─────────────────────────────────────────────
+    # ── Abrir fuente de video subida ──────────────────────────────────────
     cap = None
     tmp_path = None
 
-    if "Webcam" in video_source:
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            st.error("❌ No se pudo abrir la webcam. Verifica que esté conectada.")
-            st.session_state.running = False
-            st.stop()
-    elif uploaded_video is not None:
+    if uploaded_video is not None:
         # Guardar temporalmente el video subido
         suffix = Path(uploaded_video.name).suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
