@@ -396,8 +396,8 @@ with vid_col:
         cv2.putText(dummy, "Control de Acceso Inteligente", (130, 250),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (6, 182, 212), 2)
         video_placeholder.image(
-            cv2.cvtColor(dummy, cv2.COLOR_BGR2RGB),
-            use_container_width=True,
+        cv2.cvtColor(dummy, cv2.COLOR_BGR2RGB),
+        use_column_width=True,
         )
 
 
