@@ -309,9 +309,9 @@ with st.sidebar:
 
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        btn_start = st.button("▶ Iniciar", use_container_width=True)
+        btn_start = st.button("▶ Iniciar", use_column_width=True)
     with col_c2:
-        btn_stop  = st.button("⏹ Detener", use_container_width=True)
+        btn_stop  = st.button("⏹ Detener", use_column_width=True)
 
     if st.button("🗑 Limpiar eventos", use_container_width=True):
         clear_all_events()
@@ -515,7 +515,7 @@ if st.session_state.running:
             # Mostrar frame
             video_placeholder.image(
                 frame_to_rgb(annotated),
-                use_container_width=True,
+                use_column_width=True,
                 caption=f"Frame #{st.session_state.frame_count} · "
                         f"{len(detections)} persona(s) detectada(s)",
             )
@@ -645,7 +645,7 @@ with tab1:
 
         st.dataframe(
             df_display,
-            use_container_width=True,
+            use_column_width=True,
             height=400,
         )
         st.caption(f"Mostrando {len(df_filtrado)} de {len(all_events)} eventos")
@@ -689,7 +689,7 @@ with tab2:
                 legend=dict(bgcolor="#111827"),
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, use_column_width=True)
 
         with gcol2:
             # Gráfico de barras: eventos por estado
@@ -712,7 +712,7 @@ with tab2:
                 showlegend=False,
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, use_column_width=True)
 
         # Línea temporal de alertas
         df_alerts = df_g[df_g["estado"] == "sospechoso"].copy()
@@ -741,7 +741,7 @@ with tab2:
                 font_color="#f1f5f9",
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_line, use_container_width=True)
+            st.plotly_chart(fig_line, use_column_width=True)
 
 
 # ── Tab 3: Capturas ───────────────────────────────────────────────────────
@@ -764,7 +764,7 @@ with tab3:
                         st.image(
                             frame_to_rgb(img),
                             caption=cap_file.name,
-                            use_container_width=True,
+                            use_column_width=True,
                         )
                     else:
                         st.warning(f"No se pudo cargar {cap_file.name}")
