@@ -1,24 +1,7 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# SERVSecurity – Requirements
-# Versiones fijas para máxima reproducibilidad.
-# Instalar con: pip install -r requirements.txt
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Framework de aplicación web
 streamlit>=1.35.0
-
-# Visión por computadora
-opencv-python-headless>=4.9.0   # headless = sin dependencias de GUI, ideal para servidores
+opencv-python-headless>=4.9.0   
 numpy>=1.26.0
-
-# Detección de personas (YOLOv8 descarga yolov8n.pt automáticamente al primer uso)
 ultralytics>=8.2.0
-
-# Gráficos interactivos
 plotly>=5.22.0
-
-# Manejo de datos
 pandas>=2.2.0
 
-# Para compatibilidad con Python 3.10+
-# (SQLite3 viene incluido en la librería estándar de Python)
