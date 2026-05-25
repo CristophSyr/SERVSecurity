@@ -309,9 +309,9 @@ with st.sidebar:
 
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        btn_start = st.button("▶ Iniciar", use_column_width=True)
+        btn_start = st.button("▶ Iniciar", use_container_width=True)
     with col_c2:
-        btn_stop  = st.button("⏹ Detener", use_column_width=True)
+        btn_stop  = st.button("⏹ Detener", use_container_width=True)
 
     if st.button("🗑 Limpiar eventos", use_container_width=True):
         clear_all_events()
