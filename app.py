@@ -762,7 +762,7 @@ with tab1:
 
         st.dataframe(
             df_display,
-            use_column_width=True,
+            use_container_width=True,
             height=400,
         )
         st.caption(f"Mostrando {len(df_filtrado)} de {len(all_events)} eventos")
@@ -806,7 +806,7 @@ with tab2:
                 legend=dict(bgcolor="#111827"),
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_pie, use_column_width=True)
+            st.plotly_chart(fig_pie, use_container_width=True)
 
         with gcol2:
             # Gráfico de barras: eventos por estado
@@ -829,7 +829,7 @@ with tab2:
                 showlegend=False,
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_bar, use_column_width=True)
+            st.plotly_chart(fig_bar, use_container_width=True)
 
         # Línea temporal de alertas
         df_alerts = df_g[df_g["estado"] == "sospechoso"].copy()
@@ -858,7 +858,7 @@ with tab2:
                 font_color="#f1f5f9",
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_line, use_column_width=True)
+            st.plotly_chart(fig_line, use_container_width=True)
 
 
 # ── Tab 3: Capturas ───────────────────────────────────────────────────────
