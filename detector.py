@@ -1,6 +1,6 @@
 """
 detector.py – Módulo de detección de personas con YOLOv8 preentrenado.
-Utiliza el modelo yolov8n.pt (nano) para mayor velocidad en demo.
+Utiliza el modelo yolov8n-pose.pt (nano) para extraer puntos articulares (esqueleto) y analizar comportamiento.
 """
 
 import cv2
@@ -34,7 +34,7 @@ class PersonDetector:
     Encapsula el modelo YOLOv8 y la lógica de detección de personas.
     """
 
-    def __init__(self, model_name: str = "yolov8n.pt", confidence: float = 0.45):
+    def __init__(self, model_name: str = "yolov8n-pose.pt", confidence: float = 0.45):
         """
         Args:
             model_name: Nombre del modelo YOLOv8 a cargar.
@@ -71,17 +71,30 @@ class PersonDetector:
 
         for result in results:
             boxes = result.boxes
+            keypoints = result.keypoints
+            
             if boxes is None:
                 continue
-            for box in boxes:
+                
+            for i, box in enumerate(boxes):
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 conf = float(box.conf[0])
                 cx = (x1 + x2) // 2
                 cy = (y1 + y2) // 2
+                
+                # Extraer keypoints si el modelo lo soporta (yolov8-pose)
+                kpts = None
+                if keypoints is not None and len(keypoints) > i:
+                    # kpts: (17, 2) o (17, 3) dependiendo si incluye confianza
+                    # Usamos .data[0] para obtener el tensor de la persona actual
+                    kpt_data = keypoints.data[i].cpu().numpy()
+                    kpts = kpt_data.tolist()
+
                 detections.append({
                     "bbox": (x1, y1, x2, y2),
                     "confidence": conf,
                     "center": (cx, cy),
+                    "keypoints": kpts
                 })
 
         return detections
@@ -148,9 +161,43 @@ def draw_detections(
         cv2.putText(output, label, (x1 + 3, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLOR_TEXT, 2)
 
+        # ── Dibujar Esqueleto (Keypoints) ─────────────────────────────────────
+        kpts = det.get("keypoints")
+        if kpts is not None:
+            # Lista de conexiones de articulaciones (COCO format)
+            skeleton = [
+                (15, 13), (13, 11), (16, 14), (14, 12), (11, 12),
+                (5, 11), (6, 12), (5, 6), (5, 7), (6, 8), (7, 9),
+                (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4),
+                (3, 5), (4, 6)
+            ]
+            
+            # Dibujar uniones (huesos)
+            for j1, j2 in skeleton:
+                if j1 < len(kpts) and j2 < len(kpts):
+                    p1 = kpts[j1]
+                    p2 = kpts[j2]
+                    # Validar si tienen confianza > 0.5 (si la confianza existe en kpts[i][2])
+                    if (len(p1) > 2 and p1[2] < 0.5) or (len(p2) > 2 and p2[2] < 0.5):
+                        continue
+                    if p1[0] == 0 or p2[0] == 0:  # Keypoints no detectados
+                        continue
+                        
+                    pt1 = (int(p1[0]), int(p1[1]))
+                    pt2 = (int(p2[0]), int(p2[1]))
+                    # Dibujar linea semitransparente
+                    cv2.line(output, pt1, pt2, box_color, 2)
+            
+            # Dibujar puntos (articulaciones)
+            for p in kpts:
+                if p[0] != 0 and p[1] != 0:
+                    if len(p) > 2 and p[2] < 0.5:
+                        continue
+                    cv2.circle(output, (int(p[0]), int(p[1])), 3, (0, 255, 255), -1)
+
         # Punto central
         cx, cy = det["center"]
-        cv2.circle(output, (cx, cy), 4, box_color, -1)
+        cv2.circle(output, (cx, cy), 5, box_color, -1)
 
     # ── Timestamp en esquina ──────────────────────────────────────────────────
     ts = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")

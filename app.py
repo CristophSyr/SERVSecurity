@@ -474,12 +474,14 @@ if WEBRTC_AVAILABLE:
         hour_start,
         hour_end,
         use_overlap,
+        max_velocity,
+        max_aspect,
         capture_interval,
     ):
         class SERVSecurityWebRTCProcessor(VideoProcessorBase):
             def __init__(self):
                 self.detector = PersonDetector(
-                    model_name="yolov8n.pt",
+                    model_name="yolov8n-pose.pt",
                     confidence=confidence,
                 )
                 self.rules_engine = RulesEngine(
@@ -488,6 +490,8 @@ if WEBRTC_AVAILABLE:
                     allowed_start=hour_start,
                     allowed_end=hour_end,
                     use_overlap=use_overlap,
+                    max_velocity_px_sec=max_velocity,
+                    max_aspect_ratio=max_aspect,
                 )
                 self.last_capture_time = 0.0
 
@@ -616,6 +620,21 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── Comportamiento (Behavioral Anomaly) ─────────────────────────────────
+    st.markdown("#### Analisis de Comportamiento")
+    st.caption("Deteccion de anomalías de movimiento y postura (Autorizados)")
+
+    max_velocity = st.slider(
+        "Umbral Movimiento Erratico (px/s)", 300, 1500, 800, 50,
+        help="Velocidad que dispara alerta de 'Movimiento Erratico' (ej. carrera, forcejeo)."
+    )
+    max_aspect = st.slider(
+        "Umbral Postura (Ancho/Alto)", 1.0, 2.5, 1.3, 0.1,
+        help="Proporcion del cuerpo para detectar caídas o agachamientos inusuales."
+    )
+
+    st.markdown("---")
+
     # ── Controles ──────────────────────────────────────────────────────────
     st.markdown("#### Controles")
 
@@ -626,9 +645,9 @@ with st.sidebar:
 
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        btn_start = st.button("▶ Iniciar", use_container_width=True)
+        btn_start = st.button("Iniciar", use_container_width=True)
     with col_c2:
-        btn_stop  = st.button("⏹ Detener", use_container_width=True)
+        btn_stop  = st.button("Detener", use_container_width=True)
 
     if st.button("Limpiar eventos", use_container_width=True):
         clear_all_events()
@@ -740,9 +759,9 @@ if btn_start and not st.session_state.running:
     try:
         if "Subir" in video_source or "Local" in video_source:
             # Inicializar detector y reglas para video local o subido
-            with st.spinner("Cargando modelo YOLOv8…"):
+            with st.spinner("Cargando modelo YOLOv8-Pose..."):
                 st.session_state.detector = PersonDetector(
-                    model_name="yolov8n.pt",
+                    model_name="yolov8n-pose.pt",
                     confidence=confidence,
                 )
 
@@ -752,6 +771,8 @@ if btn_start and not st.session_state.running:
                 allowed_start=hour_start,
                 allowed_end=hour_end,
                 use_overlap=use_overlap,
+                max_velocity_px_sec=max_velocity,
+                max_aspect_ratio=max_aspect,
             )
         else:
             # WebRTC maneja su propio detector internamente
@@ -805,6 +826,8 @@ if st.session_state.running:
                     hour_start=hour_start,
                     hour_end=hour_end,
                     use_overlap=use_overlap,
+                    max_velocity=max_velocity,
+                    max_aspect=max_aspect,
                     capture_interval=capture_interval,
                 ),
                 media_stream_constraints={
@@ -815,9 +838,10 @@ if st.session_state.running:
             )
 
         with info_col:
-            st.markdown("### 📹 Modo Webcam WebRTC")
-            st.write("La detección se procesa directamente desde el video del navegador.")
-            st.write("Si el navegador pide permisos, selecciona **Permitir cámara**.")
+            st.markdown("### Modo Webcam WebRTC")
+            st.write("La deteccion se procesa directamente desde el video del navegador.")
+            st.write("Si el navegador pide permisos, selecciona **Permitir camara**.")
+            st.info("Nota: Si el componente no carga, asegurate de no usar bloqueadores de anuncios (como Brave Shields) que bloquean WebRTC. Para uso local, usa 'Webcam Local'.")
 
         st.stop()
 
@@ -842,11 +866,11 @@ if st.session_state.running:
             tmp_path = tmp.name
         cap = cv2.VideoCapture(tmp_path)
         if not cap.isOpened():
-            st.error("❌ No se pudo abrir el video. Intenta con otro archivo.")
+            st.error("No se pudo abrir el video. Intenta con otro archivo.")
             st.session_state.running = False
             st.stop()
     else:
-        st.warning("⚠️ Selecciona una fuente de video y presiona Iniciar.")
+        st.warning("Selecciona una fuente de video y presiona Iniciar.")
         st.session_state.running = False
         st.stop()
 
@@ -925,15 +949,23 @@ if st.session_state.running:
             # ── Panel derecho: estado en vivo ─────────────────────────────
             with live_status.container():
                 if has_alert:
-                    alert_placeholder.markdown("""
+                    # Buscar la razon de la alerta en los eventos actuales
+                    alert_reason = "Anomalía Detectada"
+                    if events:
+                        # Tomar el último evento sospechoso
+                        suspicious_events = [e for e in events if e["estado"] == "sospechoso"]
+                        if suspicious_events:
+                            alert_reason = suspicious_events[-1]["tipo_evento"]
+
+                    alert_placeholder.markdown(f"""
                     <div class="alert-box">
-                      <b>⚠️ ALERTA ACTIVA</b> – Persona detectada en zona restringida
+                      <b>ALERTA ACTIVA</b> – {alert_reason}
                     </div>
                     """, unsafe_allow_html=True)
                 else:
                     alert_placeholder.markdown("""
                     <div class="normal-box">
-                      <b>✅ Estado Normal</b> – Sin anomalías detectadas
+                      <b>Estado Normal</b> – Sin anomalías detectadas
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -950,7 +982,7 @@ if st.session_state.running:
             # Últimos eventos en tiempo real
             recent = get_all_events(limit=10)
             with live_events.container():
-                st.markdown("**📋 Últimos eventos**")
+                st.markdown("**Últimos eventos**")
                 for ev in recent[:5]:
                     emoji = get_status_emoji(ev["estado"])
                     st.markdown(
@@ -974,13 +1006,13 @@ if st.session_state.running:
 # DASHBOARD – Historial, gráficos y capturas
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
-st.markdown("## 📊 Dashboard de Análisis")
+st.markdown("## Dashboard de Análisis")
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📋 Historial de Eventos",
-    "📈 Gráficos",
-    "🖼 Capturas",
-    "ℹ️ Acerca de",
+    "Historial de Eventos",
+    "Graficos",
+    "Capturas",
+    "Acerca de",
 ])
 
 
@@ -1016,7 +1048,7 @@ with tab1:
         # Formatear columnas
         df_display = df_filtrado[["fecha", "hora", "tipo_evento", "estado", "duracion", "detalle"]].copy()
         df_display["estado"] = df_display["estado"].apply(
-            lambda s: f"{'🔴 Sospechoso' if s == 'sospechoso' else '🟢 Normal'}"
+            lambda s: f"{'Sospechoso' if s == 'sospechoso' else 'Normal'}"
         )
         df_display["duracion"] = df_display["duracion"].apply(
             lambda d: format_duration(d)
@@ -1033,7 +1065,7 @@ with tab1:
         # Exportar CSV
         csv = df_filtrado.to_csv(index=False).encode("utf-8")
         st.download_button(
-            "⬇️ Exportar CSV",
+            "Exportar CSV",
             csv,
             "servsecurity_eventos.csv",
             "text/csv",
