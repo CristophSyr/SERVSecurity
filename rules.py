@@ -98,6 +98,8 @@ class TrackingState:
         self.velocity        = 0.0       # píxeles por segundo
         self.is_authorized: Optional[bool] = None # None=Pendiente, True=OK, False=Desconocido
         self.auth_pending    = False     # True si ya se envio a analizar
+        self.auth_attempts   = 0         # Intentos de reconocimiento
+        self.last_auth_time  = 0.0       # Timestamp del ultimo intento
 
 
 class RulesEngine:
@@ -224,9 +226,15 @@ class RulesEngine:
             
             # Lanzar validación facial asíncrona si está pendiente y tenemos crop
             if self.authenticator and crop is not None and crop.size > 0:
-                if track.is_authorized is None and not track.auth_pending:
-                    track.auth_pending = True
-                    self.authenticator.authenticate_async(crop, track)
+                # Reintentar hasta 5 veces si es desconocido (por si estaba muy lejos al inicio)
+                needs_auth = (track.is_authorized is None) or (track.is_authorized is False and track.auth_attempts < 5)
+                
+                if needs_auth and not track.auth_pending:
+                    if now.timestamp() - track.last_auth_time > 1.5: # 1.5 seg entre intentos
+                        track.auth_pending = True
+                        track.last_auth_time = now.timestamp()
+                        track.auth_attempts += 1
+                        self.authenticator.authenticate_async(crop, track)
 
             # ── Análisis de Comportamiento (Behavioral Anomaly) ────────────────
             behavior_anomalous = False
