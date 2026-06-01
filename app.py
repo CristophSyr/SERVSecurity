@@ -945,7 +945,7 @@ if st.session_state.running:
             # Mostrar frame
             video_placeholder.image(
                 frame_to_rgb(annotated),
-                use_column_width=True,
+                use_container_width=True,
                 caption=f"Frame #{st.session_state.frame_count} · "
                         f"{len(detections)} persona(s) detectada(s)",
             )
