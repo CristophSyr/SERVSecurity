@@ -83,6 +83,9 @@ class FacialAuthenticator:
             except Exception as e:
                 # Falló la extracción de cara
                 track.is_authorized = False
+            
+            # Liberar el flag de pendiente para que rules_engine pueda reintentar
+            track.auth_pending = False
                 
             if callback:
                 callback(track)

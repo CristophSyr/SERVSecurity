@@ -760,7 +760,6 @@ with vid_col:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (6, 182, 212), 2)
         video_placeholder.image(
         cv2.cvtColor(dummy, cv2.COLOR_BGR2RGB),
-        use_column_width=True,
         )
 
 
@@ -945,7 +944,6 @@ if st.session_state.running:
             # Mostrar frame
             video_placeholder.image(
                 frame_to_rgb(annotated),
-                use_container_width=True,
                 caption=f"Frame #{st.session_state.frame_count} · "
                         f"{len(detections)} persona(s) detectada(s)",
             )
@@ -1083,7 +1081,6 @@ with tab1:
 
         st.dataframe(
             df_display,
-            use_container_width=True,
             height=400,
         )
         st.caption(f"Mostrando {len(df_filtrado)} de {len(all_events)} eventos")
@@ -1127,7 +1124,7 @@ with tab2:
                 legend=dict(bgcolor="#111827"),
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie)
 
         with gcol2:
             # Gráfico de barras: eventos por estado
@@ -1150,7 +1147,7 @@ with tab2:
                 showlegend=False,
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar)
 
         # Línea temporal de alertas
         df_alerts = df_g[df_g["estado"] == "sospechoso"].copy()
@@ -1179,7 +1176,7 @@ with tab2:
                 font_color="#f1f5f9",
                 margin=dict(t=50, b=10, l=10, r=10),
             )
-            st.plotly_chart(fig_line, use_container_width=True)
+            st.plotly_chart(fig_line)
 
 
 # ── Tab 3: Capturas ───────────────────────────────────────────────────────
@@ -1202,7 +1199,6 @@ with tab3:
                         st.image(
                             frame_to_rgb(img),
                             caption=cap_file.name,
-                            use_column_width=True,
                         )
                     else:
                         st.warning(f"No se pudo cargar {cap_file.name}")
