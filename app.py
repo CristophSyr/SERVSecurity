@@ -322,7 +322,7 @@ with st.sidebar:
     st.markdown("#### 📹 Fuente de video")
     video_source = st.radio(
         "Selecciona fuente",
-        ["🎥 Webcam en vivo", "📁 Subir video"],
+        ["📸 Webcam Local (Mejor para PC)", "🎥 Webcam WebRTC (Nube)", "📁 Subir video"],
         label_visibility="collapsed",
     )
 
@@ -530,7 +530,7 @@ if btn_stop and st.session_state.running:
 if st.session_state.running:
 
     # ── Webcam del navegador usando WebRTC ────────────────────────────────
-    if "Webcam" in video_source:
+    if "WebRTC" in video_source:
         with vid_col:
             st.info(
                 "La cámara se abrirá desde tu navegador. "
@@ -567,11 +567,17 @@ if st.session_state.running:
     detector     = st.session_state.detector
     rules_engine = st.session_state.rules_engine
 
-    # ── Abrir fuente de video subida ──────────────────────────────────────
+    # ── Abrir fuente de video subida o local ──────────────────────────────────────
     cap = None
     tmp_path = None
 
-    if uploaded_video is not None:
+    if "Local" in video_source:
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error("❌ No se pudo abrir la cámara web local.")
+            st.session_state.running = False
+            st.stop()
+    elif uploaded_video is not None:
         # Guardar temporalmente el video subido
         suffix = Path(uploaded_video.name).suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
