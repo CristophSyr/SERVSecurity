@@ -16,6 +16,8 @@ EVENT_INTRUSION        = "Intrusión en zona restringida"
 EVENT_PERMANENCIA      = "Permanencia prolongada"
 EVENT_HORARIO          = "Acceso fuera de horario"
 EVENT_PRESENCIA        = "Presencia detectada"
+EVENT_COMPORTAMIENTO_R = "Movimiento errático (Carrera/Forcejeo)"
+EVENT_COMPORTAMIENTO_P = "Postura inusual (Caída/Agachamiento)"
 
 
 def point_in_rect(px: int, py: int, rect: tuple) -> bool:
@@ -92,6 +94,8 @@ class TrackingState:
         self.zone_entry_time: Optional[datetime] = None
         self.time_in_zone    = 0.0       # segundos acumulados en zona
         self.alert_fired     = False     # para no disparar la misma alerta repetida
+        self.behavior_alert  = False     # para no repetir alerta de comportamiento
+        self.velocity        = 0.0       # píxeles por segundo
 
 
 class RulesEngine:
@@ -106,6 +110,8 @@ class RulesEngine:
         allowed_start: str = "08:00",
         allowed_end: str   = "20:00",
         use_overlap: bool  = True,
+        max_velocity_px_sec: float = 800.0,
+        max_aspect_ratio: float = 1.3,
     ):
         """
         Args:
@@ -120,6 +126,8 @@ class RulesEngine:
         self.allowed_start      = allowed_start
         self.allowed_end        = allowed_end
         self.use_overlap        = use_overlap
+        self.max_velocity_px_sec = max_velocity_px_sec
+        self.max_aspect_ratio   = max_aspect_ratio
 
         # Rastreo persistente entre frames (clave: ID aproximado)
         self._tracks: dict[int, TrackingState] = {}
@@ -147,9 +155,17 @@ class RulesEngine:
                 best_id   = tid
 
         if best_id is not None and best_dist < DIST_THRESHOLD:
-            self._tracks[best_id].center    = center
-            self._tracks[best_id].last_seen = now
-            return self._tracks[best_id]
+            track = self._tracks[best_id]
+            # Calcular velocidad (píxeles por segundo)
+            dt = (now - track.last_seen).total_seconds()
+            if dt > 0:
+                track.velocity = best_dist / dt
+            else:
+                track.velocity = 0.0
+                
+            track.center    = center
+            track.last_seen = now
+            return track
 
         # Nueva pista
         new_id = self._next_id
@@ -194,8 +210,54 @@ class RulesEngine:
         for i, det in enumerate(detections):
             center = det["center"]
             bbox   = det["bbox"]
+            kpts   = det.get("keypoints")
 
             track = self._find_or_create_track(center, now)
+
+            # ── Análisis de Comportamiento (Behavioral Anomaly) ────────────────
+            behavior_anomalous = False
+            behavior_reason = ""
+            
+            # 1. Postura Inusual (Caída / Gateo)
+            # Evaluar proporción del Bounding Box (ancho vs alto)
+            bx1, by1, bx2, by2 = bbox
+            w = bx2 - bx1
+            h = by2 - by1
+            aspect_ratio = w / h if h > 0 else 0
+            
+            # Evaluar Keypoints si están disponibles (Nariz debajo de la cadera)
+            head_below_waist = False
+            if kpts is not None and len(kpts) >= 13:
+                nose = kpts[0]
+                hip_l = kpts[11]
+                hip_r = kpts[12]
+                if nose[0] != 0 and hip_l[0] != 0:
+                    # Coordenada Y crece hacia abajo en imágenes
+                    if nose[1] > hip_l[1]:
+                        head_below_waist = True
+
+            if aspect_ratio > self.max_aspect_ratio or head_below_waist:
+                behavior_anomalous = True
+                behavior_reason = EVENT_COMPORTAMIENTO_P
+                alerts[i] = True
+                
+            # 2. Movimiento Errático / Rápido (Carrera / Forcejeo)
+            if track.velocity > self.max_velocity_px_sec:
+                behavior_anomalous = True
+                behavior_reason = EVENT_COMPORTAMIENTO_R
+                alerts[i] = True
+
+            if behavior_anomalous and not track.behavior_alert:
+                track.behavior_alert = True
+                events.append({
+                    "tipo_evento": behavior_reason,
+                    "estado":      "sospechoso",
+                    "duracion":    0.0,
+                    "detalle":     f"Velocidad: {track.velocity:.0f} px/s | Aspecto: {aspect_ratio:.2f}",
+                })
+            elif not behavior_anomalous:
+                # Resetear alerta si vuelve a comportamiento normal
+                track.behavior_alert = False
 
             # ── Regla 1: persona en zona restringida ───────────────────────────
             if self.use_overlap:
