@@ -4,6 +4,14 @@ import numpy as np
 from pathlib import Path
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import sys
+import io
+
+# Parche para evitar que DeepFace crashee la terminal de Windows al imprimir emojis (ej. 🔗) durante la descarga
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 FACES_DIR = "authorized_faces"
 os.makedirs(FACES_DIR, exist_ok=True)
@@ -33,6 +41,7 @@ class FacialAuthenticator:
                     img_path=np.zeros((224, 224, 3), dtype=np.uint8), 
                     db_path=self.db_path, 
                     model_name=self.model_name,
+                    detector_backend="retinaface",
                     enforce_detection=False,
                     silent=True
                 )
@@ -60,7 +69,7 @@ class FacialAuthenticator:
                     img_path=frame_crop,
                     db_path=self.db_path,
                     model_name=self.model_name,
-                    detector_backend="opencv",
+                    detector_backend="retinaface",
                     enforce_detection=False,
                     silent=True
                 )
