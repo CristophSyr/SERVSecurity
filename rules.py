@@ -96,6 +96,8 @@ class TrackingState:
         self.alert_fired     = False     # para no disparar la misma alerta repetida
         self.behavior_alert  = False     # para no repetir alerta de comportamiento
         self.velocity        = 0.0       # píxeles por segundo
+        self.is_authorized: Optional[bool] = None # None=Pendiente, True=OK, False=Desconocido
+        self.auth_pending    = False     # True si ya se envio a analizar
 
 
 class RulesEngine:
@@ -112,6 +114,7 @@ class RulesEngine:
         use_overlap: bool  = True,
         max_velocity_px_sec: float = 800.0,
         max_aspect_ratio: float = 1.3,
+        authenticator = None,
     ):
         """
         Args:
@@ -128,6 +131,7 @@ class RulesEngine:
         self.use_overlap        = use_overlap
         self.max_velocity_px_sec = max_velocity_px_sec
         self.max_aspect_ratio   = max_aspect_ratio
+        self.authenticator      = authenticator
 
         # Rastreo persistente entre frames (clave: ID aproximado)
         self._tracks: dict[int, TrackingState] = {}
@@ -211,8 +215,18 @@ class RulesEngine:
             center = det["center"]
             bbox   = det["bbox"]
             kpts   = det.get("keypoints")
+            crop   = det.get("crop")
 
             track = self._find_or_create_track(center, now)
+            
+            # Pasar el estado de autenticacion a la deteccion para que se dibuje
+            det["is_authorized"] = track.is_authorized
+            
+            # Lanzar validación facial asíncrona si está pendiente y tenemos crop
+            if self.authenticator and crop is not None and crop.size > 0:
+                if track.is_authorized is None and not track.auth_pending:
+                    track.auth_pending = True
+                    self.authenticator.authenticate_async(crop, track)
 
             # ── Análisis de Comportamiento (Behavioral Anomaly) ────────────────
             behavior_anomalous = False
@@ -266,19 +280,44 @@ class RulesEngine:
                 in_zone = point_in_rect(center[0], center[1], self.zone)
 
             if in_zone:
-                alerts[i] = True
-
                 if not track.in_zone:
                     # Acaba de entrar a la zona
                     track.in_zone         = True
                     track.zone_entry_time = now
                     track.alert_fired     = False
-                    events.append({
-                        "tipo_evento": EVENT_INTRUSION,
-                        "estado":      "sospechoso",
-                        "duracion":    0.0,
-                        "detalle":     f"Centro: {center}",
-                    })
+                    
+                    # Logica de Autenticación Facial:
+                    # Si es Desconocido (is_authorized == False), es Intrusión Inmediata
+                    if track.is_authorized is False:
+                        alerts[i] = True
+                        events.append({
+                            "tipo_evento": EVENT_INTRUSION,
+                            "estado":      "sospechoso",
+                            "duracion":    0.0,
+                            "detalle":     f"ROSTRO DESCONOCIDO. Centro: {center}",
+                        })
+                    # Si no esta autorizado, y esta fuera de horario, tambien es sospechoso
+                    elif not within_schedule:
+                        alerts[i] = True
+                        events.append({
+                            "tipo_evento": EVENT_HORARIO,
+                            "estado":      "sospechoso",
+                            "duracion":    0.0,
+                            "detalle":     f"Acceso a las {now.strftime('%H:%M')} (horario: {self.allowed_start}–{self.allowed_end})",
+                        })
+                    else:
+                        # Ingreso normal (en horario permitido y validando/validado)
+                        auth_status = "Autorizado" if track.is_authorized else "Analizando rostro..."
+                        events.append({
+                            "tipo_evento": "Ingreso a zona",
+                            "estado":      "normal",
+                            "duracion":    0.0,
+                            "detalle":     f"{auth_status}. Centro: {center}",
+                        })
+
+                # Mantener la alerta activa si es un desconocido o fuera de horario
+                if track.is_authorized is False or not within_schedule:
+                    alerts[i] = True
 
                 # ── Regla 2: permanencia prolongada ───────────────────────────
                 if track.zone_entry_time:
@@ -287,22 +326,17 @@ class RulesEngine:
 
                     if time_in_zone >= self.max_permanence_sec and not track.alert_fired:
                         track.alert_fired = True
+                        alerts[i] = True
                         events.append({
                             "tipo_evento": EVENT_PERMANENCIA,
                             "estado":      "sospechoso",
                             "duracion":    round(time_in_zone, 1),
                             "detalle":     f"Permanencia: {time_in_zone:.1f}s (máx {self.max_permanence_sec}s)",
                         })
-
-                # ── Regla 3: fuera de horario ──────────────────────────────────
-                if not within_schedule:
-                    alerts[i] = True
-                    events.append({
-                        "tipo_evento": EVENT_HORARIO,
-                        "estado":      "sospechoso",
-                        "duracion":    0.0,
-                        "detalle":     f"Acceso a las {now.strftime('%H:%M')} (horario: {self.allowed_start}–{self.allowed_end})",
-                    })
+                    
+                    # Mantener alerta visual si ya se excedio el tiempo
+                    if track.alert_fired:
+                        alerts[i] = True
 
             else:
                 # Salió de la zona

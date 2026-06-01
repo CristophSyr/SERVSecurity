@@ -94,7 +94,8 @@ class PersonDetector:
                     "bbox": (x1, y1, x2, y2),
                     "confidence": conf,
                     "center": (cx, cy),
-                    "keypoints": kpts
+                    "keypoints": kpts,
+                    "crop": frame[y1:y2, x1:x2].copy()
                 })
 
         return detections
@@ -149,8 +150,18 @@ def draw_detections(
         is_alert = alerts[i] if i < len(alerts) else False
 
         box_color = COLOR_BOX_ALERT if is_alert else COLOR_BOX_NORMAL
+        auth_status = det.get("is_authorized")
+        if auth_status is True:
+            auth_text = " [AUTORIZADO]"
+            box_color = (255, 165, 0) # Celeste/Verde claro si esta autorizado
+        elif auth_status is False:
+            auth_text = " [DESCONOCIDO]"
+            box_color = COLOR_BOX_ALERT # Rojo si es desconocido
+        else:
+            auth_text = " [Analizando...]"
+
         status_text = "[!] ALERTA" if is_alert else "Persona"
-        label = f"{status_text} {conf:.0%}"
+        label = f"{status_text}{auth_text} {conf:.0%}"
 
         # Caja
         cv2.rectangle(output, (x1, y1), (x2, y2), box_color, 2)
