@@ -136,7 +136,7 @@ def draw_detections(
         is_alert = alerts[i] if i < len(alerts) else False
 
         box_color = COLOR_BOX_ALERT if is_alert else COLOR_BOX_NORMAL
-        status_text = "⚠ ALERTA" if is_alert else "Persona"
+        status_text = "[!] ALERTA" if is_alert else "Persona"
         label = f"{status_text} {conf:.0%}"
 
         # Caja
