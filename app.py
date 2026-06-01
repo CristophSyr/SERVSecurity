@@ -21,6 +21,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+import facial_auth
+
 # WebRTC es opcional – solo se usa para cámara remota en la nube
 try:
     from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
@@ -476,6 +478,7 @@ if WEBRTC_AVAILABLE:
         use_overlap,
         max_velocity,
         max_aspect,
+        use_face_auth,
         capture_interval,
     ):
         class SERVSecurityWebRTCProcessor(VideoProcessorBase):
@@ -484,6 +487,9 @@ if WEBRTC_AVAILABLE:
                     model_name="yolov8n-pose.pt",
                     confidence=confidence,
                 )
+                
+                authenticator = facial_auth.FacialAuthenticator() if use_face_auth else None
+                
                 self.rules_engine = RulesEngine(
                     zone=(0, 0, 100, 100),
                     max_permanence_sec=max_perm,
@@ -492,6 +498,7 @@ if WEBRTC_AVAILABLE:
                     use_overlap=use_overlap,
                     max_velocity_px_sec=max_velocity,
                     max_aspect_ratio=max_aspect,
+                    authenticator=authenticator,
                 )
                 self.last_capture_time = 0.0
 
@@ -634,6 +641,18 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    
+    # ── Biometría Facial ───────────────────────────────────────────────────
+    st.markdown("#### Autenticación Biométrica")
+    st.caption("Reconocimiento Facial mediante IA (One-Shot Learning)")
+    
+    use_face_auth = st.checkbox(
+        "Activar Reconocimiento Facial", value=True,
+        help="Si está activo, solo las personas en la carpeta 'authorized_faces' pueden entrar a la zona."
+    )
+    st.info("Coloca fotos en la carpeta `authorized_faces/`")
+
+    st.markdown("---")
 
     # ── Controles ──────────────────────────────────────────────────────────
     st.markdown("#### Controles")
@@ -764,6 +783,11 @@ if btn_start and not st.session_state.running:
                     model_name="yolov8n-pose.pt",
                     confidence=confidence,
                 )
+            
+            authenticator = None
+            if use_face_auth:
+                with st.spinner("Cargando motor de Autenticación Facial..."):
+                    authenticator = facial_auth.FacialAuthenticator()
 
             st.session_state.rules_engine = RulesEngine(
                 zone=(0, 0, 100, 100),
@@ -773,6 +797,7 @@ if btn_start and not st.session_state.running:
                 use_overlap=use_overlap,
                 max_velocity_px_sec=max_velocity,
                 max_aspect_ratio=max_aspect,
+                authenticator=authenticator,
             )
         else:
             # WebRTC maneja su propio detector internamente
@@ -828,6 +853,7 @@ if st.session_state.running:
                     use_overlap=use_overlap,
                     max_velocity=max_velocity,
                     max_aspect=max_aspect,
+                    use_face_auth=use_face_auth,
                     capture_interval=capture_interval,
                 ),
                 media_stream_constraints={
