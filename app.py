@@ -321,9 +321,9 @@ with st.sidebar:
     # ── Fuente de video ────────────────────────────────────────────────────
     st.markdown("#### 📹 Fuente de video")
     video_source = st.radio(
-        "Selecciona fuente",
-        ["📸 Webcam Local (Mejor para PC)", "🎥 Webcam WebRTC (Nube)", "📁 Subir video"],
-        label_visibility="collapsed",
+    "Selecciona fuente",
+    ["Webcam WebRTC (Nube)", "Subir video"],
+    label_visibility="collapsed",
     )
 
     uploaded_video = None
