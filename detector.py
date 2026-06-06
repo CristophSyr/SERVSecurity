@@ -34,7 +34,7 @@ class PersonDetector:
     Encapsula el modelo YOLOv8 y la lógica de detección de personas.
     """
 
-    def __init__(self, model_name: str = "yolov8n-pose.pt", confidence: float = 0.45):
+    def __init__(self, model_name: str = "yolov8n-pose.pt", confidence: float = 0.60):
         """
         Args:
             model_name: Nombre del modelo YOLOv8 a cargar.
@@ -85,10 +85,17 @@ class PersonDetector:
                 # Extraer keypoints si el modelo lo soporta (yolov8-pose)
                 kpts = None
                 if keypoints is not None and len(keypoints) > i:
-                    # kpts: (17, 2) o (17, 3) dependiendo si incluye confianza
+                    # kpts: (17, 3) donde [2] es la confianza del keypoint
                     # Usamos .data[0] para obtener el tensor de la persona actual
                     kpt_data = keypoints.data[i].cpu().numpy()
                     kpts = kpt_data.tolist()
+                    
+                    # Filtro de falsos positivos: Una persona real debe tener al menos 
+                    # 3 "articulaciones/keypoints" visibles y con buena confianza.
+                    # Esto evita detectar "macetas" o "abrigos" que engañan la forma del BBox.
+                    valid_kpts = sum(1 for kp in kpts if len(kp) >= 3 and kp[2] > 0.4)
+                    if valid_kpts < 3:
+                        continue # Descartar esta detección, no es humana
 
                 detections.append({
                     "bbox": (x1, y1, x2, y2),
