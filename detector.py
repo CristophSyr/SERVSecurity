@@ -34,7 +34,7 @@ class PersonDetector:
     Encapsula el modelo YOLOv8 y la lógica de detección de personas.
     """
 
-    def __init__(self, model_name: str = "yolov8n-pose.pt", confidence: float = 0.60):
+    def __init__(self, model_name: str = "yolov8n-pose.pt", confidence: float = 0.75):
         """
         Args:
             model_name: Nombre del modelo YOLOv8 a cargar.
@@ -90,12 +90,12 @@ class PersonDetector:
                     kpt_data = keypoints.data[i].cpu().numpy()
                     kpts = kpt_data.tolist()
                     
-                    # Filtro de falsos positivos: Una persona real debe tener al menos 
-                    # 3 "articulaciones/keypoints" visibles y con buena confianza.
-                    # Esto evita detectar "macetas" o "abrigos" que engañan la forma del BBox.
-                    valid_kpts = sum(1 for kp in kpts if len(kp) >= 3 and kp[2] > 0.4)
-                    if valid_kpts < 3:
-                        continue # Descartar esta detección, no es humana
+                    # Filtro anti-alucinaciones (motos, macetas, objetos complejos):
+                    # Una moto puede engañar a la IA y generar keypoints con ~0.5 de confianza.
+                    # Exigimos al menos 5 puntos anatómicos con una certeza MUY alta (> 0.70).
+                    valid_kpts = sum(1 for kp in kpts if len(kp) >= 3 and kp[2] > 0.70)
+                    if valid_kpts < 5:
+                        continue # Descartar esta detección, es muy probable que sea un objeto
 
                 detections.append({
                     "bbox": (x1, y1, x2, y2),
