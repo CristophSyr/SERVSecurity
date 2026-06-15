@@ -859,6 +859,13 @@ if st.session_state.running:
                 "Acepta el permiso de cámara cuando aparezca."
             )
 
+            # Pre-cargar modelos para evitar timeout de WebRTC en la nube
+            with st.spinner("Preparando cerebros de IA (puede tardar un minuto la primera vez que inicia el servidor)..."):
+                from detector import PersonDetector
+                _dummy_det = PersonDetector(model_name="yolov8n-pose.pt")
+                if use_face_auth:
+                    _dummy_fa = facial_auth.FacialAuthenticator()
+
             webrtc_streamer(
                 key="servsecurity-webrtc",
                 mode=WebRtcMode.SENDRECV,
