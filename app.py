@@ -14,6 +14,9 @@ import numpy as np
 import time
 import tempfile
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # Previene Segmentation Fault por choque entre TF y PyTorch en la nube
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
 from pathlib import Path
 from datetime import datetime
 
