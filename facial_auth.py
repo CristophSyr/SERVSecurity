@@ -82,6 +82,9 @@ class FacialAuthenticator:
                     
             except Exception as e:
                 # Falló la extracción de cara
+                import traceback
+                print(f"[DeepFace Error] {e}")
+                traceback.print_exc()
                 track.is_authorized = False
             
             # Liberar el flag de pendiente para que rules_engine pueda reintentar
