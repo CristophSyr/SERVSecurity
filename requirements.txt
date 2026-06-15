@@ -11,5 +11,4 @@ setuptools>=70.0.0
 streamlit-webrtc
 av
 deepface
-tensorflow-cpu
 tf-keras
