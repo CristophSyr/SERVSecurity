@@ -480,6 +480,7 @@ if WEBRTC_AVAILABLE:
         max_aspect,
         use_face_auth,
         capture_interval,
+        show_skeleton,
     ):
         class SERVSecurityWebRTCProcessor(VideoProcessorBase):
             def __init__(self):
@@ -522,6 +523,7 @@ if WEBRTC_AVAILABLE:
                     alerts,
                     zone=zone_px,
                     zone_active=True,
+                    draw_skeleton=show_skeleton,
                 )
 
                 now_ts = time.time()
@@ -572,9 +574,17 @@ with st.sidebar:
     st.markdown("#### Fuente de video")
     video_source = st.radio(
         "Selecciona fuente",
-        ["Webcam Local", "Subir video", "Webcam WebRTC (Nube)"],
+        ["Webcam Local", "Cámara IP (Seguridad)", "Subir video", "Webcam WebRTC (Nube)"],
         label_visibility="collapsed",
     )
+
+    ip_camera_url = None
+    if "Cámara IP" in video_source:
+        ip_camera_url = st.text_input(
+            "URL RTSP/HTTP de la cámara", 
+            placeholder="ej: rtsp://admin:12345@192.168.1.50/stream",
+            help="Ingresa la dirección IP o RTSP de tu cámara de vigilancia."
+        )
 
     uploaded_video = None
     if "Subir" in video_source:
@@ -623,6 +633,11 @@ with st.sidebar:
         "Usar superposición de bbox", value=True,
         help="Si está activo, cualquier parte del cuerpo en la zona genera alerta. "
              "Si no, solo cuenta el centro.",
+    )
+
+    show_skeleton = st.checkbox(
+        "Mostrar Esqueleto (Postura)", value=True,
+        help="Muestra u oculta los puntos articulares en la imagen de la cámara.",
     )
 
     st.markdown("---")
@@ -775,7 +790,8 @@ with info_col:
 # ════════════════════════════════════════════════════════════════════════════
 if btn_start and not st.session_state.running:
     try:
-        if "Subir" in video_source or "Local" in video_source:
+        # Para subidas, local o IP: control manual
+        if "Subir" in video_source or "Local" in video_source or "Cámara IP" in video_source:
             # Inicializar detector y reglas para video local o subido
             with st.spinner("Cargando modelo YOLOv8-Pose..."):
                 st.session_state.detector = PersonDetector(
@@ -854,6 +870,7 @@ if st.session_state.running:
                     max_aspect=max_aspect,
                     use_face_auth=use_face_auth,
                     capture_interval=capture_interval,
+                    show_skeleton=show_skeleton,
                 ),
                 media_stream_constraints={
                     "video": True,
@@ -881,6 +898,16 @@ if st.session_state.running:
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             st.error("❌ No se pudo abrir la cámara web local.")
+            st.session_state.running = False
+            st.stop()
+    elif "Cámara IP" in video_source:
+        if not ip_camera_url:
+            st.warning("⚠️ Por favor ingresa la URL de la cámara.")
+            st.session_state.running = False
+            st.stop()
+        cap = cv2.VideoCapture(ip_camera_url)
+        if not cap.isOpened():
+            st.error("❌ No se pudo conectar a la cámara IP. Verifica la URL o la red.")
             st.session_state.running = False
             st.stop()
     elif uploaded_video is not None:
@@ -939,6 +966,7 @@ if st.session_state.running:
             annotated = draw_detections(
                 frame, detections, alerts,
                 zone=zone_px, zone_active=True,
+                draw_skeleton=show_skeleton,
             )
 
             # Mostrar frame

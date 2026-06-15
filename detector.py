@@ -97,12 +97,41 @@ class PersonDetector:
                     if valid_kpts < 5:
                         continue # Descartar esta detección, es muy probable que sea un objeto
 
+                # --- Lógica de Recorte de Cabeza (Head Crop) para mejor reconocimiento ---
+                head_crop = None
+                if kpts is not None and len(kpts) >= 5:
+                    # Extraer keypoints faciales (0: nariz, 1: ojo izq, 2: ojo der, 3: oreja izq, 4: oreja der)
+                    face_kpts = [kp for kp in kpts[:5] if len(kp) >= 3 and kp[2] > 0.4]
+                    if len(face_kpts) >= 2:
+                        fx_min = int(min(kp[0] for kp in face_kpts))
+                        fy_min = int(min(kp[1] for kp in face_kpts))
+                        fx_max = int(max(kp[0] for kp in face_kpts))
+                        fy_max = int(max(kp[1] for kp in face_kpts))
+                        
+                        # Añadir margen alrededor de la cara
+                        w = max(fx_max - fx_min, 10)
+                        h = max(fy_max - fy_min, 10)
+                        pad_x = int(w * 1.5)
+                        pad_y = int(h * 1.5)
+                        
+                        hx1 = max(0, fx_min - pad_x)
+                        hy1 = max(0, fy_min - pad_y * 1.5)
+                        hx2 = min(frame.shape[1], fx_max + pad_x)
+                        hy2 = min(frame.shape[0], fy_max + pad_y)
+                        
+                        head_crop = frame[int(hy1):int(hy2), int(hx1):int(hx2)].copy()
+                
+                # Fallback: Si no hay keypoints faciales fiables, tomar el 30% superior del cuerpo
+                if head_crop is None or head_crop.size == 0:
+                    head_h = int((y2 - y1) * 0.3)
+                    head_crop = frame[y1:y1+head_h, x1:x2].copy()
+
                 detections.append({
                     "bbox": (x1, y1, x2, y2),
                     "confidence": conf,
                     "center": (cx, cy),
                     "keypoints": kpts,
-                    "crop": frame[y1:y2, x1:x2].copy()
+                    "crop": head_crop
                 })
 
         return detections
@@ -114,6 +143,7 @@ def draw_detections(
     alerts: list[bool],
     zone: Optional[tuple] = None,
     zone_active: bool = True,
+    draw_skeleton: bool = True,
 ) -> np.ndarray:
     """
     Dibuja las bounding boxes, estado de alerta y zona restringida sobre el frame.
@@ -181,7 +211,7 @@ def draw_detections(
 
         # ── Dibujar Esqueleto (Keypoints) ─────────────────────────────────────
         kpts = det.get("keypoints")
-        if kpts is not None:
+        if kpts is not None and draw_skeleton:
             # Lista de conexiones de articulaciones (COCO format)
             skeleton = [
                 (15, 13), (13, 11), (16, 14), (14, 12), (11, 12),
