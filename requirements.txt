@@ -11,3 +11,4 @@ setuptools==69.5.1
 streamlit-webrtc
 av
 deepface
+tensorflow-cpu==2.15.0
