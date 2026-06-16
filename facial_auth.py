@@ -16,11 +16,8 @@ if sys.stderr.encoding.lower() != 'utf-8':
 FACES_DIR = "authorized_faces"
 os.makedirs(FACES_DIR, exist_ok=True)
 
-try:
-    from deepface import DeepFace
-    DEEPFACE_AVAILABLE = True
-except ImportError:
-    DEEPFACE_AVAILABLE = False
+# Carga diferida de DeepFace para prevenir Segmentation Faults con TensorFlow en el arranque de Streamlit
+DEEPFACE_AVAILABLE = True
 
 
 class FacialAuthenticator:
@@ -52,6 +49,7 @@ class FacialAuthenticator:
 
         def _verify():
             try:
+                from deepface import DeepFace
                 dfs = DeepFace.find(
                     img_path=frame_crop,
                     db_path=self.db_path,
