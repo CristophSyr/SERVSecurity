@@ -41,7 +41,7 @@ class FacialAuthenticator:
                     img_path=np.zeros((224, 224, 3), dtype=np.uint8), 
                     db_path=self.db_path, 
                     model_name=self.model_name,
-                    detector_backend="retinaface",
+                    detector_backend="opencv",
                     enforce_detection=False,
                     silent=True
                 )
