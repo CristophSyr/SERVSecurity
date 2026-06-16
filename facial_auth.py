@@ -33,20 +33,7 @@ class FacialAuthenticator:
         self.model_name = "Facenet"
         self.executor = ThreadPoolExecutor(max_workers=2)
         
-        # Opcional: pre-crear embeddings si ya hay imágenes
-        if DEEPFACE_AVAILABLE and os.listdir(self.db_path):
-            try:
-                # Pre-cargar representaciones (pkl)
-                _ = DeepFace.find(
-                    img_path=np.zeros((224, 224, 3), dtype=np.uint8), 
-                    db_path=self.db_path, 
-                    model_name=self.model_name,
-                    detector_backend="opencv",
-                    enforce_detection=False,
-                    silent=True
-                )
-            except:
-                pass
+        # Eliminado el pre-calentamiento de DeepFace para evitar pico de memoria OOM en el arranque de Streamlit Cloud
 
     def authenticate_async(self, frame_crop: np.ndarray, track, callback=None):
         """

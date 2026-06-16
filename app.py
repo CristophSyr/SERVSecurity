@@ -19,14 +19,21 @@ import sys
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 if sys.platform.startswith("linux"):
-    # En la nube (Streamlit Cloud - Linux): Prevenir Segmentation Fault por choque de librerías CUDNN
+    # En la nube (Streamlit Cloud - Linux): Prevenir OOM (Out of Memory) y Segmentation Fault
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
 else:
     # En local (Windows): Permitir el uso de la GPU (RTX 3060) y prevenir crash silencioso de OpenMP
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 import tensorflow as tf
 import torch
+
+if sys.platform.startswith("linux"):
+    torch.set_num_threads(1)
+    cv2.setNumThreads(1)
 
 # Configurar TensorFlow para compartir la GPU de forma amigable con PyTorch (solo útil en local)
 gpus = tf.config.list_physical_devices('GPU')
