@@ -498,15 +498,32 @@ def _init_state():
 _init_state()
 
 if WEBRTC_AVAILABLE:
-    RTC_CONFIGURATION = RTCConfiguration({
-        "iceServers": [
-            {
-                "urls": ["turn:openrelay.metered.ca:80?transport=tcp", "turn:openrelay.metered.ca:443?transport=tcp"],
-                "username": "openrelayproject",
-                "credential": "openrelayproject"
-            }
-        ]
-    })
+    import urllib.request as _urlreq
+    import json as _json
+
+    def _get_metered_ice_servers():
+        """Fetch real TURN credentials from Metered.ca API."""
+        _METERED_DOMAIN = "servsecurity.metered.live"
+        _METERED_SECRET = "brf9aRf8UHS1_fI-OnS00FLPIDXvB0LQejTS1GpmpSNMpASB"
+        try:
+            # Step 1: Create a temporary credential
+            create_url = f"https://{_METERED_DOMAIN}/api/v1/turn/credential?secretKey={_METERED_SECRET}"
+            body = _json.dumps({"expiryInSeconds": 86400, "label": "servsecurity"}).encode("utf-8")
+            req = _urlreq.Request(create_url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+            resp = _urlreq.urlopen(req, timeout=10)
+            cred_data = _json.loads(resp.read())
+            api_key = cred_data["apiKey"]
+
+            # Step 2: Fetch ICE servers using the temporary API key
+            creds_url = f"https://{_METERED_DOMAIN}/api/v1/turn/credentials?apiKey={api_key}"
+            resp2 = _urlreq.urlopen(creds_url, timeout=10)
+            ice_servers = _json.loads(resp2.read())
+            return ice_servers
+        except Exception as e:
+            st.warning(f"⚠️ No se pudo obtener servidores TURN de Metered: {e}. Usando STUN de respaldo.")
+            return [{"urls": "stun:stun.l.google.com:19302"}]
+
+    RTC_CONFIGURATION = RTCConfiguration({"iceServers": _get_metered_ice_servers()})
 
 
 if WEBRTC_AVAILABLE:
