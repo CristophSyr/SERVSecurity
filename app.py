@@ -8,18 +8,14 @@ Ejecutar con:
     streamlit run app.py
 """
 
-import streamlit as st
-import cv2
-import numpy as np
-import time
-import tempfile
 import os
 import sys
 
+# === CONFIGURACIÓN CRÍTICA DEL SISTEMA (Debe ir antes de cualquier otro import) ===
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 if sys.platform.startswith("linux"):
-    # En la nube (Streamlit Cloud - Linux): Prevenir OOM (Out of Memory) y Segmentation Fault
+    # En la nube (Streamlit Cloud - Linux): Prevenir OOM y Segmentation Fault
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
@@ -27,6 +23,12 @@ if sys.platform.startswith("linux"):
 else:
     # En local (Windows): Permitir el uso de la GPU (RTX 3060) y prevenir crash silencioso de OpenMP
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+
+import streamlit as st
+import cv2
+import numpy as np
+import time
+import tempfile
 
 import tensorflow as tf
 import torch
