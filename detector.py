@@ -5,6 +5,7 @@ Utiliza el modelo yolov8n-pose.pt (nano) para extraer puntos articulares (esquel
 
 import cv2
 import numpy as np
+import os
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -50,8 +51,16 @@ class PersonDetector:
         # Precalentamiento del modelo
         dummy = np.zeros((480, 640, 3), dtype=np.uint8)
         self.model(dummy, verbose=False)
+        
+        # Cargar modelo de anomalías si existe (El "Cerebro 2")
+        self.anomaly_model = None
+        anomaly_path = "runs/classify/servsecurity_anomaly_model/weights/best.pt"
+        if os.path.exists(anomaly_path):
+            self.anomaly_model = YOLO(anomaly_path)
+            self.anomaly_model(dummy, verbose=False)  # Precalentamiento
+            print("✅ Modelo de Anomalías cargado con éxito.")
 
-    def detect(self, frame: np.ndarray) -> list[dict]:
+    def detect(self, frame: np.ndarray) -> tuple[list[dict], Optional[dict]]:
         """
         Detecta personas en un fotograma.
 
@@ -59,13 +68,11 @@ class PersonDetector:
             frame: Imagen BGR (numpy array).
 
         Returns:
-            Lista de detecciones, cada una es:
-            {
-                'bbox': (x1, y1, x2, y2),
-                'confidence': float,
-                'center': (cx, cy)
-            }
+            Tupla (detections, anomaly_info):
+            - detections: Lista de diccionarios con info de personas.
+            - anomaly_info: Diccionario con la anomalía detectada (ej. {'class': 'Fighting', 'conf': 0.85}) o None.
         """
+        # 1. MOTOR 1: Detección de Personas (Pose)
         results = self.model(frame, verbose=False, conf=self.confidence, classes=[PERSON_CLASS_ID])
         detections = []
 
@@ -134,7 +141,26 @@ class PersonDetector:
                     "crop": head_crop
                 })
 
-        return detections
+        # 2. MOTOR 2: Clasificación de Anomalías (Solo si hay personas y el modelo existe)
+        anomaly_info = None
+        if self.anomaly_model is not None and len(detections) > 0:
+            # YOLO classification predicts on the whole frame
+            cls_results = self.anomaly_model(frame, verbose=False)
+            if cls_results and len(cls_results) > 0:
+                probs = cls_results[0].probs
+                if probs is not None:
+                    top_class_idx = probs.top1
+                    top_conf = float(probs.top1conf)
+                    top_class_name = cls_results[0].names[top_class_idx]
+                    
+                    # Si no es normal y hay buena confianza, lanzar alerta
+                    if top_class_name.lower() != "normal" and top_conf > 0.70:
+                        anomaly_info = {
+                            "class": top_class_name.upper(),
+                            "conf": top_conf
+                        }
+
+        return detections, anomaly_info
 
 
 def draw_detections(
@@ -144,9 +170,10 @@ def draw_detections(
     zone: Optional[tuple] = None,
     zone_active: bool = True,
     draw_skeleton: bool = True,
+    anomaly_info: Optional[dict] = None
 ) -> np.ndarray:
     """
-    Dibuja las bounding boxes, estado de alerta y zona restringida sobre el frame.
+    Dibuja las bounding boxes, estado de alerta, zona restringida y anomalías globales.
 
     Args:
         frame: Imagen BGR original.
@@ -154,6 +181,8 @@ def draw_detections(
         alerts: Lista booleana paralela a detections (True = alerta activa).
         zone: Tupla (x1, y1, x2, y2) de la zona restringida.
         zone_active: Si True, muestra la zona restringida.
+        draw_skeleton: Si True, dibuja el esqueleto de la persona.
+        anomaly_info: Diccionario con info de la anomalía global detectada, o None.
 
     Returns:
         Frame anotado.
@@ -256,8 +285,20 @@ def draw_detections(
 
     # ── Marca de agua ─────────────────────────────────────────────────────────
     cv2.putText(output, "SERVSecurity v1.0", (10, 22),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLOR_TEXT_SHADOW, 3)
-    cv2.putText(output, "SERVSecurity v1.0", (10, 22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 220, 255), 1)
+
+    # ── Alerta Global de Anomalía ─────────────────────────────────────────────
+    if anomaly_info is not None:
+        anomaly_text = f"¡ALERTA CRITICA: {anomaly_info['class']} DETECTADO! ({anomaly_info['conf']:.0%})"
+        (tw, th), _ = cv2.getTextSize(anomaly_text, cv2.FONT_HERSHEY_DUPLEX, 0.8, 2)
+        tx = (w - tw) // 2
+        ty = 50
+        
+        # Fondo rojo sangriento con borde negro
+        cv2.rectangle(output, (tx - 20, ty - th - 15), (tx + tw + 20, ty + 15), (0, 0, 255), -1)
+        cv2.rectangle(output, (tx - 20, ty - th - 15), (tx + tw + 20, ty + 15), (0, 0, 0), 2)
+        # Texto blanco con sombra
+        cv2.putText(output, anomaly_text, (tx+2, ty+2), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 0, 0), 2)
+        cv2.putText(output, anomaly_text, (tx, ty), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 2)
 
     return output

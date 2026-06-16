@@ -516,10 +516,10 @@ if WEBRTC_AVAILABLE:
                 zone_px = normalize_zone(zone_percent, w, h)
                 self.rules_engine.update_zone(zone_px)
 
-                detections = self.detector.detect(img)
+                detections, anomaly_info = self.detector.detect(img)
                 alerts, events = self.rules_engine.evaluate(detections)
 
-                has_alert = any(alerts)
+                has_alert = any(alerts) or anomaly_info is not None
 
                 annotated = draw_detections(
                     img,
@@ -528,6 +528,7 @@ if WEBRTC_AVAILABLE:
                     zone=zone_px,
                     zone_active=True,
                     draw_skeleton=show_skeleton,
+                    anomaly_info=anomaly_info
                 )
 
                 now_ts = time.time()
@@ -549,6 +550,17 @@ if WEBRTC_AVAILABLE:
                         duracion=event["duracion"],
                         captura=cap_path,
                         detalle=event.get("detalle", ""),
+                    )
+                    
+                # Registrar el evento global de anomalía si ocurrió uno nuevo
+                if anomaly_info is not None:
+                    # En un entorno real se haría un debounce (ej. no guardar si hace 5 seg se guardó otro igual)
+                    insert_event(
+                        tipo_evento="ANOMALIA_DETECTADA",
+                        estado="Alerta Global",
+                        duracion=0,
+                        captura=cap_path,
+                        detalle=f"Se detectó posible crimen: {anomaly_info['class']} (Conf: {anomaly_info['conf']:.0%})",
                     )
 
                 return av.VideoFrame.from_ndarray(annotated, format="bgr24")

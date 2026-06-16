@@ -55,10 +55,23 @@ def download_piecemeal():
         print(f"Obtenidos {len(all_files)} archivos hasta ahora...")
         if not token:
             break
+            
+        # Evitar el Error 429 (Too Many Requests) de Kaggle
+        time.sleep(1)
 
     print(f"\n¡Se encontraron {len(all_files)} videos en total!")
+    
+    # ¡Ordenamos la lista para dejar los gigantes al final!
+    def get_size(f):
+        if hasattr(f, 'totalBytes') and f.totalBytes is not None: return f.totalBytes
+        if hasattr(f, 'size') and f.size is not None: return f.size
+        if hasattr(f, '_raw_dict') and 'totalBytes' in f._raw_dict: return f._raw_dict['totalBytes']
+        return 0
+        
+    print("Ordenando los archivos para descargar primero los livianos y dejar los gigantes para el final...")
+    all_files.sort(key=get_size)
+    
     print(f"Se descargarán uno por uno en: {TARGET_DIR}")
-    print("Esto asegura que tu disco C: nunca se sature por el caché de Google Drive.\n")
     
     os.makedirs(TARGET_DIR, exist_ok=True)
     
@@ -88,7 +101,7 @@ def download_piecemeal():
         while True:
             try:
                 # Descargamos el archivo individual. Se bajará un .zip pequeño.
-                api.dataset_download_file(DATASET, file_name, path=cat_dir, force=True)
+                api.dataset_download_file(DATASET, file_name, path=cat_dir, force=True, quiet=False)
                 
                 # Extraer el .zip individual si Kaggle lo comprimió
                 posible_zip = os.path.join(cat_dir, video_name + ".zip")
