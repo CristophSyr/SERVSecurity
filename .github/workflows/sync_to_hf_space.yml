@@ -22,4 +22,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: huggingface-cli upload Magnus1510/ServSecurityHost . . --repo-type space --token $HF_TOKEN --exclude ".git/*" ".venv/*" ".github/*" "__pycache__/*"
+        run: hf upload Magnus1510/ServSecurityHost . . --repo-type space --token $HF_TOKEN --exclude ".git/*" ".venv/*" ".github/*" "__pycache__/*"
