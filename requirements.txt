@@ -1,14 +1,15 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
-streamlit==1.35.0
+streamlit==1.58.0
 numpy==1.26.4
 pandas==2.2.3
 plotly==5.22.0
-opencv-python==4.10.0.84
+opencv-python-headless==4.10.0.84
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
 ultralytics==8.2.0
 setuptools>=70.0.0
-streamlit-webrtc
-av
-deepface
+streamlit-webrtc==0.72.1
+av==14.0.1
+tensorflow-cpu
 tf-keras
+deepface
