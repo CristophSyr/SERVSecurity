@@ -27,7 +27,8 @@ class FacialAuthenticator:
     """
     def __init__(self):
         self.db_path = FACES_DIR
-        self.model_name = "Facenet"
+        # Usar OpenFace (15MB) en lugar de Facenet (92MB) para prevenir OOM (Out of Memory) en la Nube
+        self.model_name = "OpenFace"
         self.executor = ThreadPoolExecutor(max_workers=2)
         
         # Eliminado el pre-calentamiento de DeepFace para evitar pico de memoria OOM en el arranque de Streamlit Cloud
