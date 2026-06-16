@@ -849,34 +849,28 @@ with info_col:
 # ════════════════════════════════════════════════════════════════════════════
 if btn_start and not st.session_state.running:
     try:
-        # Para subidas, local o IP: control manual
-        if "Subir" in video_source or "Local" in video_source or "Cámara IP" in video_source:
-            # Inicializar detector y reglas para video local o subido
-            with st.spinner("Cargando modelo YOLOv8-Pose..."):
-                st.session_state.detector = PersonDetector(
-                    model_name="yolov8n-pose.pt",
-                    confidence=confidence,
-                )
-            
-            authenticator = None
-            if use_face_auth:
-                with st.spinner("Cargando motor de Autenticación Facial..."):
-                    authenticator = facial_auth.FacialAuthenticator()
-
-            st.session_state.rules_engine = RulesEngine(
-                zone=(0, 0, 100, 100),
-                max_permanence_sec=max_perm,
-                allowed_start=hour_start,
-                allowed_end=hour_end,
-                use_overlap=use_overlap,
-                max_velocity_px_sec=max_velocity,
-                max_aspect_ratio=max_aspect,
-                authenticator=authenticator,
+        # Inicializar detector y reglas para cualquier fuente de video
+        with st.spinner("Cargando modelo YOLOv8-Pose..."):
+            st.session_state.detector = PersonDetector(
+                model_name="yolov8n-pose.pt",
+                confidence=confidence,
             )
-        else:
-            # WebRTC maneja su propio detector internamente
-            st.session_state.detector = None
-            st.session_state.rules_engine = None
+        
+        authenticator = None
+        if use_face_auth:
+            with st.spinner("Cargando motor de Autenticación Facial..."):
+                authenticator = facial_auth.FacialAuthenticator()
+
+        st.session_state.rules_engine = RulesEngine(
+            zone=(0, 0, 100, 100),
+            max_permanence_sec=max_perm,
+            allowed_start=hour_start,
+            allowed_end=hour_end,
+            use_overlap=use_overlap,
+            max_velocity_px_sec=max_velocity,
+            max_aspect_ratio=max_aspect,
+            authenticator=authenticator,
+        )
 
         st.session_state.running = True
         st.session_state.frame_count = 0
@@ -896,60 +890,103 @@ if btn_stop and st.session_state.running:
 # ════════════════════════════════════════════════════════════════════════════
 if st.session_state.running:
 
-    # ── Webcam del navegador usando WebRTC ────────────────────────────────
+    # ── Webcam del navegador usando componente JS (sin WebRTC) ─────────────
     if "WebRTC" in video_source:
-        if not WEBRTC_AVAILABLE:
-            with vid_col:
-                st.error(
-                    "❌ **WebRTC no está disponible.**\n\n"
-                    "El componente `streamlit-webrtc` no se pudo cargar correctamente. "
-                    "Usa la opción **📸 Webcam Local** o **📁 Subir video** en su lugar."
-                )
-            st.session_state.running = False
-            st.stop()
+        from camera_input_live import camera_input_live
 
         with vid_col:
             st.info(
-                "La cámara se abrirá desde tu navegador. "
-                "Acepta el permiso de cámara cuando aparezca."
+                "📹 **Cámara en vivo** — Acepta el permiso de cámara cuando aparezca."
             )
 
-            # Pre-cargar modelos para evitar timeout de WebRTC en la nube
-            with st.spinner("Preparando cerebros de IA (puede tardar un minuto la primera vez que inicia el servidor)..."):
-                from detector import PersonDetector
-                _dummy_det = PersonDetector(model_name="yolov8n-pose.pt")
-                if use_face_auth:
-                    _dummy_fa = facial_auth.FacialAuthenticator()
+            # Usa el componente live (1000ms = 1 fps, seguro para la CPU gratuita)
+            image_data = camera_input_live(show_controls=False, debounce=1000)
 
-            webrtc_streamer(
-                key="servsecurity-webrtc",
-                mode=WebRtcMode.SENDRECV,
-                rtc_configuration=RTC_CONFIGURATION,
-                video_processor_factory=make_webrtc_processor(
-                    confidence=confidence,
-                    zone_percent=(zone_x1, zone_y1, zone_x2, zone_y2),
-                    max_perm=max_perm,
-                    hour_start=hour_start,
-                    hour_end=hour_end,
-                    use_overlap=use_overlap,
-                    max_velocity=max_velocity,
-                    max_aspect=max_aspect,
-                    use_face_auth=use_face_auth,
-                    capture_interval=capture_interval,
-                    show_skeleton=show_skeleton,
-                ),
-                media_stream_constraints={
-                    "video": True,
-                    "audio": False,
-                },
-                async_processing=True,
-            )
+        if image_data is not None:
+            # image_data es un objeto subido por st.camera_input (BytesIO / PIL Image wrappers)
+            # Leer los bytes
+            bytes_data = image_data.getvalue()
+            img_array = np.frombuffer(bytes_data, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+            if img is not None:
+                img = resize_frame(img, max_width=800)
+                h, w = img.shape[:2]
+
+                detector = st.session_state.detector
+                rules_engine = st.session_state.rules_engine
+
+                zone_px = normalize_zone(
+                    (zone_x1, zone_y1, zone_x2, zone_y2), w, h
+                )
+                rules_engine.update_zone(zone_px)
+
+                # Detección con IA
+                detections, anomaly_info = detector.detect(img)
+                alerts, events = rules_engine.evaluate(detections)
+
+                has_alert = any(alerts) or anomaly_info is not None
+
+                annotated = draw_detections(
+                    img,
+                    detections,
+                    alerts,
+                    zone=zone_px,
+                    zone_active=True,
+                    draw_skeleton=show_skeleton,
+                    anomaly_info=anomaly_info,
+                )
+
+                # Guardar captura si hay alerta
+                now_ts = time.time()
+                cap_path = ""
+                if (has_alert or len(detections) > 0) and (
+                    now_ts - st.session_state.get("last_capture_time", 0) >= capture_interval
+                ):
+                    cap_path = save_capture(
+                        annotated,
+                        prefix="alerta" if has_alert else "presencia",
+                    )
+                    st.session_state["last_capture_time"] = now_ts
+
+                # Registrar eventos
+                for event in events:
+                    insert_event(
+                        tipo_evento=event["tipo_evento"],
+                        estado=event["estado"],
+                        duracion=event["duracion"],
+                        captura=cap_path,
+                        detalle=event.get("detalle", ""),
+                    )
+
+                if anomaly_info is not None:
+                    insert_event(
+                        tipo_evento="ANOMALIA_DETECTADA",
+                        estado="Alerta Global",
+                        duracion=0,
+                        captura=cap_path,
+                        detalle=f"Se detectó posible crimen: {anomaly_info['class']} (Conf: {anomaly_info['conf']:.0%})",
+                    )
+
+                # Mostrar frame anotado
+                with vid_col:
+                    st.image(
+                        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                        caption=f"🔴 EN VIVO — {len(detections)} persona(s) detectada(s)",
+                        use_container_width=True,
+                    )
+
+                with info_col:
+                    n_det = len(detections)
+                    st.metric("Personas", n_det)
+                    if has_alert:
+                        st.error("⚠️ ALERTA ACTIVA")
+                    else:
+                        st.success("✅ Sin alertas")
 
         with info_col:
-            st.markdown("### Modo Webcam WebRTC")
-            st.write("La deteccion se procesa directamente desde el video del navegador.")
-            st.write("Si el navegador pide permisos, selecciona **Permitir camara**.")
-            st.info("Nota: Si el componente no carga, asegurate de no usar bloqueadores de anuncios (como Brave Shields) que bloquean WebRTC. Para uso local, usa 'Webcam Local'.")
+            st.markdown("### 📹 Cámara en Vivo")
+            st.write("La cámara captura frames continuamente y la IA los analiza en tiempo real.")
 
         st.stop()
 
