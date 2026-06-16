@@ -500,9 +500,8 @@ _init_state()
 if WEBRTC_AVAILABLE:
     RTC_CONFIGURATION = RTCConfiguration({
         "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
             {
-                "urls": ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                "urls": ["turn:openrelay.metered.ca:80?transport=tcp", "turn:openrelay.metered.ca:443?transport=tcp"],
                 "username": "openrelayproject",
                 "credential": "openrelayproject"
             }
