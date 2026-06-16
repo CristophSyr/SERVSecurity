@@ -69,7 +69,7 @@ class FacialAuthenticator:
                     img_path=frame_crop,
                     db_path=self.db_path,
                     model_name=self.model_name,
-                    detector_backend="retinaface",
+                    detector_backend="opencv",
                     enforce_detection=False,
                     silent=True
                 )

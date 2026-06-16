@@ -14,9 +14,21 @@ import numpy as np
 import time
 import tempfile
 import os
-import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # Previene Segmentation Fault por choque entre TF y PyTorch en la nube
+
+# Prevenir crash silencioso de OpenMP al mezclar PyTorch y TensorFlow en Windows
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+# Configurar TensorFlow para compartir la GPU de forma amigable con PyTorch
+import tensorflow as tf
+import torch
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
 
 from pathlib import Path
 from datetime import datetime
@@ -977,12 +989,12 @@ if st.session_state.running:
             if detector.model:
                 pass   # la confianza se pasa en detect()
 
-            # Detección de personas
-            detections = detector.detect(frame)
+            # Detección de personas y anomalías
+            detections, anomaly_info = detector.detect(frame)
 
             # Evaluación de reglas
             alerts, events = rules_engine.evaluate(detections)
-            has_alert = any(alerts)
+            has_alert = any(alerts) or anomaly_info is not None
             st.session_state.alert_active = has_alert
 
             # Dibujar anotaciones
@@ -990,6 +1002,7 @@ if st.session_state.running:
                 frame, detections, alerts,
                 zone=zone_px, zone_active=True,
                 draw_skeleton=show_skeleton,
+                anomaly_info=anomaly_info
             )
 
             # Mostrar frame
@@ -1019,6 +1032,16 @@ if st.session_state.running:
                     duracion   =event["duracion"],
                     captura    =cap_path,
                     detalle    =event.get("detalle", ""),
+                )
+            
+            # Registrar evento de anomalía si se detecta
+            if anomaly_info is not None:
+                insert_event(
+                    tipo_evento="ANOMALIA_DETECTADA",
+                    estado="Alerta Global",
+                    duracion=0,
+                    captura=cap_path,
+                    detalle=f"Se detectó posible crimen: {anomaly_info['class']} (Conf: {anomaly_info['conf']:.0%})",
                 )
 
             # ── Panel derecho: estado en vivo ─────────────────────────────
