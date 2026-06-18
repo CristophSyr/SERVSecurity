@@ -58,13 +58,7 @@ import plotly.graph_objects as go
 
 import facial_auth
 
-# WebRTC es opcional – solo se usa para cámara remota en la nube
-try:
-    from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
-    import av
-    WEBRTC_AVAILABLE = True
-except (ImportError, Exception):
-    WEBRTC_AVAILABLE = False
+
 
 # Módulos propios
 from database import (
@@ -497,118 +491,7 @@ def _init_state():
 
 _init_state()
 
-if WEBRTC_AVAILABLE:
-    RTC_CONFIGURATION = RTCConfiguration({"iceServers": [
-        {"urls": "stun:stun.relay.metered.ca:80"},
-        {"urls": "turn:global.relay.metered.ca:80",
-         "username": "7fcb9f49349f0804f6dec578",
-         "credential": "wD3UBIn61zl/KqNM"},
-        {"urls": "turn:global.relay.metered.ca:80?transport=tcp",
-         "username": "7fcb9f49349f0804f6dec578",
-         "credential": "wD3UBIn61zl/KqNM"},
-        {"urls": "turn:global.relay.metered.ca:443",
-         "username": "7fcb9f49349f0804f6dec578",
-         "credential": "wD3UBIn61zl/KqNM"},
-        {"urls": "turns:global.relay.metered.ca:443?transport=tcp",
-         "username": "7fcb9f49349f0804f6dec578",
-         "credential": "wD3UBIn61zl/KqNM"},
-    ]})
 
-
-if WEBRTC_AVAILABLE:
-    def make_webrtc_processor(
-        confidence,
-        zone_percent,
-        max_perm,
-        hour_start,
-        hour_end,
-        use_overlap,
-        max_velocity,
-        max_aspect,
-        use_face_auth,
-        capture_interval,
-        show_skeleton,
-    ):
-        class SERVSecurityWebRTCProcessor(VideoProcessorBase):
-            def __init__(self):
-                self.detector = PersonDetector(
-                    model_name="yolov8n-pose.pt",
-                    confidence=confidence,
-                )
-                
-                authenticator = facial_auth.FacialAuthenticator() if use_face_auth else None
-                
-                self.rules_engine = RulesEngine(
-                    zone=(0, 0, 100, 100),
-                    max_permanence_sec=max_perm,
-                    allowed_start=hour_start,
-                    allowed_end=hour_end,
-                    use_overlap=use_overlap,
-                    max_velocity_px_sec=max_velocity,
-                    max_aspect_ratio=max_aspect,
-                    authenticator=authenticator,
-                )
-                self.last_capture_time = 0.0
-
-            def recv(self, frame):
-                img = frame.to_ndarray(format="bgr24")
-                img = resize_frame(img, max_width=800)
-
-                h, w = img.shape[:2]
-
-                zone_px = normalize_zone(zone_percent, w, h)
-                self.rules_engine.update_zone(zone_px)
-
-                detections, anomaly_info = self.detector.detect(img)
-                alerts, events = self.rules_engine.evaluate(detections)
-
-                has_alert = any(alerts) or anomaly_info is not None
-
-                annotated = draw_detections(
-                    img,
-                    detections,
-                    alerts,
-                    zone=zone_px,
-                    zone_active=True,
-                    draw_skeleton=show_skeleton,
-                    anomaly_info=anomaly_info
-                )
-
-                now_ts = time.time()
-                cap_path = ""
-
-                if (has_alert or len(detections) > 0) and (
-                    now_ts - self.last_capture_time >= capture_interval
-                ):
-                    cap_path = save_capture(
-                        annotated,
-                        prefix="alerta" if has_alert else "presencia",
-                    )
-                    self.last_capture_time = now_ts
-
-                for event in events:
-                    insert_event(
-                        tipo_evento=event["tipo_evento"],
-                        estado=event["estado"],
-                        duracion=event["duracion"],
-                        captura=cap_path,
-                        detalle=event.get("detalle", ""),
-                    )
-                    
-                # Registrar el evento global de anomalía si ocurrió uno nuevo
-                if anomaly_info is not None:
-                    # En un entorno real se haría un debounce (ej. no guardar si hace 5 seg se guardó otro igual)
-                    insert_event(
-                        tipo_evento="ANOMALIA_DETECTADA",
-                        estado="Alerta Global",
-                        duracion=0,
-                        captura=cap_path,
-                        detalle=f"Se detectó posible crimen: {anomaly_info['class']} (Conf: {anomaly_info['conf']:.0%})",
-                    )
-
-                return av.VideoFrame.from_ndarray(annotated, format="bgr24")
-
-        return SERVSecurityWebRTCProcessor
 
 # ════════════════════════════════════════════════════════════════════════════
 # SIDEBAR – Configuración
@@ -633,7 +516,7 @@ with st.sidebar:
     st.markdown("#### Fuente de video")
     video_source = st.radio(
         "Selecciona fuente",
-        ["Webcam Local", "Cámara IP (Seguridad)", "Subir video", "Webcam WebRTC (Nube)"],
+        ["Webcam Local", "Cámara IP (Seguridad)", "Subir video", "Webcam en Nube"],
         label_visibility="collapsed",
     )
 
@@ -891,7 +774,7 @@ if btn_stop and st.session_state.running:
 if st.session_state.running:
 
     # ── Webcam del navegador usando componente JS (sin WebRTC) ─────────────
-    if "WebRTC" in video_source:
+    if "Nube" in video_source:
         from camera_input_live import camera_input_live
 
         with vid_col:
