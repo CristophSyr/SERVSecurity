@@ -1,8 +1,3 @@
-"""
-detector.py – Módulo de detección de personas con YOLOv8 preentrenado.
-Utiliza el modelo yolov8n-pose.pt (nano) para extraer puntos articulares (esqueleto) y analizar comportamiento.
-"""
-
 import cv2
 import numpy as np
 import os
@@ -61,17 +56,7 @@ class PersonDetector:
             print("✅ Modelo de Anomalías cargado con éxito.")
 
     def detect(self, frame: np.ndarray) -> tuple[list[dict], Optional[dict]]:
-        """
-        Detecta personas en un fotograma.
-
-        Args:
-            frame: Imagen BGR (numpy array).
-
-        Returns:
-            Tupla (detections, anomaly_info):
-            - detections: Lista de diccionarios con info de personas.
-            - anomaly_info: Diccionario con la anomalía detectada (ej. {'class': 'Fighting', 'conf': 0.85}) o None.
-        """
+    
         # 1. MOTOR 1: Detección de Personas (Pose)
         results = self.model(frame, verbose=False, conf=self.confidence, classes=[PERSON_CLASS_ID])
         detections = []

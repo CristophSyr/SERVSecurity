@@ -7,44 +7,42 @@ from concurrent.futures import ThreadPoolExecutor
 import sys
 import io
 
-# Parche para evitar que DeepFace crashee la terminal de Windows al imprimir emojis (ej. 🔗) durante la descarga
-if sys.stdout.encoding.lower() != 'utf-8':
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-if sys.stderr.encoding.lower() != 'utf-8':
+if sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 FACES_DIR = "authorized_faces"
 os.makedirs(FACES_DIR, exist_ok=True)
 
-# Carga diferida de DeepFace para prevenir Segmentation Faults con TensorFlow en el arranque de Streamlit
-DEEPFACE_AVAILABLE = True
-
 
 class FacialAuthenticator:
     """
     Gestor de autenticación biométrica en segundo plano.
-    Evita bloquear el hilo principal de video de Streamlit.
+    Usa un Lock para evitar race conditions entre el hilo de verificación
+    y el hilo principal que consulta track.auth_pending.
     """
     def __init__(self):
         self.db_path = FACES_DIR
-        # Usar Facenet porque ya existen las representaciones en disco y es el más confiable
         self.model_name = "Facenet"
         self.executor = ThreadPoolExecutor(max_workers=2)
+        self._lock = threading.Lock()
 
     def authenticate_async(self, frame_crop: np.ndarray, track, callback=None):
         """
         Lanza la verificación facial en un hilo separado.
-        Actualizará el atributo track.is_authorized cuando termine.
+        Usa un Lock para sincronizar el acceso a track.auth_pending
+        y evitar que rules.py lance verificaciones duplicadas.
         """
-        if not DEEPFACE_AVAILABLE:
-            track.is_authorized = False
-            return
-            
-        # Verificar si hay rostros autorizados configurados
         valid_files = [f for f in os.listdir(self.db_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if not valid_files:
             track.is_authorized = False
             return
+
+        with self._lock:
+            if track.auth_pending:
+                return
+            track.auth_pending = True
 
         def _verify():
             try:
@@ -57,24 +55,17 @@ class FacialAuthenticator:
                     enforce_detection=False,
                     silent=True
                 )
-                
-                # dfs[0] contiene los matches si los hay
                 if len(dfs) > 0 and not dfs[0].empty:
                     track.is_authorized = True
                 else:
                     track.is_authorized = False
-                    
             except Exception as e:
-                # Falló la extracción de cara
-                import traceback
                 print(f"[DeepFace Error] {e}")
-                traceback.print_exc()
                 track.is_authorized = False
-            
-            # Liberar el flag de pendiente para que rules_engine pueda reintentar
-            track.auth_pending = False
-                
-            if callback:
-                callback(track)
+            finally:
+                with self._lock:
+                    track.auth_pending = False
+                if callback:
+                    callback(track)
 
         self.executor.submit(_verify)

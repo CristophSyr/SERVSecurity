@@ -38,16 +38,19 @@ import tempfile
 
 if sys.platform.startswith("linux"):
     cv2.setNumThreads(1)
-else:
-    # Configurar TensorFlow para compartir la GPU de forma amigable con PyTorch (solo útil en local)
-    import tensorflow as tf
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        try:
+
+def _configure_tf_gpu():
+    """Configura TensorFlow para compartir la GPU. Se llama solo cuando se activa reconocimiento facial."""
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
+    except Exception:
+        pass
+
+_tf_configured = False
 
 from pathlib import Path
 from datetime import datetime
@@ -742,6 +745,10 @@ if btn_start and not st.session_state.running:
         authenticator = None
         if use_face_auth:
             with st.spinner("Cargando motor de Autenticación Facial..."):
+                global _tf_configured
+                if not _tf_configured and not sys.platform.startswith("linux"):
+                    _configure_tf_gpu()
+                    _tf_configured = True
                 authenticator = facial_auth.FacialAuthenticator()
 
         st.session_state.rules_engine = RulesEngine(
@@ -915,13 +922,17 @@ if st.session_state.running:
     # ── Loop principal de frames ──────────────────────────────────────────
     stop_btn_placeholder = st.empty()
 
+    PROCESS_EVERY_N = 3
+    last_detections = []
+    last_anomaly = None
+    last_alerts = []
+
     try:
         while st.session_state.running:
             ret, frame = cap.read()
 
             if not ret:
                 if tmp_path:
-                    # Video terminó – reiniciar desde el principio
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = cap.read()
                     if not ret:
@@ -929,22 +940,29 @@ if st.session_state.running:
                 else:
                     break
 
-            frame = resize_frame(frame, max_width=800)
+            frame = resize_frame(frame, max_width=640)
             h, w  = frame.shape[:2]
 
-            # Calcular zona en píxeles a partir de porcentajes
             zone_px = normalize_zone(
                 (zone_x1, zone_y1, zone_x2, zone_y2), w, h
             )
             rules_engine.update_zone(zone_px)
-            if detector.model:
-                pass   # la confianza se pasa en detect()
 
-            # Detección de personas y anomalías
-            detections, anomaly_info = detector.detect(frame)
+            # Frame-skipping: solo ejecutar IA cada N frames para no saturar la CPU
+            run_ai = (st.session_state.frame_count % PROCESS_EVERY_N == 0)
 
-            # Evaluación de reglas
-            alerts, events = rules_engine.evaluate(detections)
+            if run_ai:
+                detections, anomaly_info = detector.detect(frame)
+                alerts, events = rules_engine.evaluate(detections)
+                last_detections = detections
+                last_anomaly = anomaly_info
+                last_alerts = alerts
+            else:
+                detections = last_detections
+                anomaly_info = last_anomaly
+                alerts = last_alerts
+                events = []
+
             has_alert = any(alerts) or anomaly_info is not None
             st.session_state.alert_active = has_alert
 

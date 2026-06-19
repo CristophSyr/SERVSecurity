@@ -55,28 +55,19 @@ def bbox_overlaps_rect(bbox: tuple, rect: tuple) -> bool:
 def is_within_schedule(allowed_start: str, allowed_end: str) -> bool:
     """
     Verifica si la hora actual está dentro del rango horario permitido.
-
-    Args:
-        allowed_start: Hora de inicio permitida en formato "HH:MM".
-        allowed_end:   Hora de fin   permitida en formato "HH:MM".
-
-    Returns:
-        True si la hora actual está dentro del rango.
+    Acepta formatos flexibles: '8:00', '08:00', '8:0', '20:30'.
     """
     now = datetime.now().time()
     try:
-        h_start, m_start = map(int, allowed_start.split(":"))
-        h_end, m_end     = map(int, allowed_end.split(":"))
-        start = dtime(h_start, m_start)
-        end   = dtime(h_end,   m_end)
+        start = datetime.strptime(allowed_start.strip(), "%H:%M").time()
+        end = datetime.strptime(allowed_end.strip(), "%H:%M").time()
 
         if start <= end:
             return start <= now <= end
         else:
-            # Rango cruza medianoche (ej. 22:00 – 06:00)
             return now >= start or now <= end
     except (ValueError, AttributeError):
-        return True   # Si hay error de parseo, no bloquear
+        return True
 
 
 class TrackingState:
