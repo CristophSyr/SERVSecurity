@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 
+import warnings
+
+# Suprimir advertencia de PyTorch 2.5 sobre torch.load() para mantener la terminal limpia
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+
 # Importación lazy para no fallar si ultralytics no está instalado en tiempo de import
 try:
     from ultralytics import YOLO
