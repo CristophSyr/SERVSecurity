@@ -77,11 +77,13 @@ from rules import RulesEngine
 from utils import (
     save_capture,
     frame_to_rgb,
+    frame_to_jpeg_bytes,
     resize_frame,
     format_duration,
     get_status_emoji,
     get_event_color,
     normalize_zone,
+    IS_CLOUD,
 )
 
 # ── Configuración de página ──────────────────────────────────────────────────
@@ -486,6 +488,7 @@ def _init_state():
         "alert_active":     False,
         "events_session":   [],
         "last_event_ids":   set(),
+        "captures_count":   0,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -719,7 +722,7 @@ with vid_col:
         cv2.putText(dummy, "Control de Acceso Inteligente", (130, 250),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (6, 182, 212), 2)
         video_placeholder.image(
-        cv2.cvtColor(dummy, cv2.COLOR_BGR2RGB),
+            frame_to_jpeg_bytes(dummy),
         )
 
 
@@ -745,7 +748,6 @@ if btn_start and not st.session_state.running:
         authenticator = None
         if use_face_auth:
             with st.spinner("Cargando motor de Autenticación Facial..."):
-                global _tf_configured
                 if not _tf_configured and not sys.platform.startswith("linux"):
                     _configure_tf_gpu()
                     _tf_configured = True
@@ -800,7 +802,7 @@ if st.session_state.running:
             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
             if img is not None:
-                img = resize_frame(img, max_width=800)
+                img = resize_frame(img, max_width=640)
                 h, w = img.shape[:2]
 
                 detector = st.session_state.detector
@@ -861,7 +863,7 @@ if st.session_state.running:
                 # Mostrar frame anotado
                 with vid_col:
                     st.image(
-                        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                        frame_to_jpeg_bytes(annotated),
                         caption=f"🔴 EN VIVO — {len(detections)} persona(s) detectada(s)",
                         use_container_width=True,
                     )
@@ -922,7 +924,14 @@ if st.session_state.running:
     # ── Loop principal de frames ──────────────────────────────────────────
     stop_btn_placeholder = st.empty()
 
-    PROCESS_EVERY_N = 3
+    # Frame-skipping adaptativo:
+    # - Nube (CPU limitada): procesar IA cada 5 frames
+    # - Local (GPU): procesar IA cada 2 frames para máxima fluidez
+    PROCESS_EVERY_N = 5 if IS_CLOUD else 2
+    # Throttle del panel derecho: actualizar info cada N frames
+    # (evita consultas BD y re-render de Streamlit en cada iteración)
+    UPDATE_PANEL_EVERY_N = 10 if IS_CLOUD else 5
+
     last_detections = []
     last_anomaly = None
     last_alerts = []
@@ -949,7 +958,8 @@ if st.session_state.running:
             rules_engine.update_zone(zone_px)
 
             # Frame-skipping: solo ejecutar IA cada N frames para no saturar la CPU
-            run_ai = (st.session_state.frame_count % PROCESS_EVERY_N == 0)
+            frame_num = st.session_state.frame_count
+            run_ai = (frame_num % PROCESS_EVERY_N == 0)
 
             if run_ai:
                 detections, anomaly_info = detector.detect(frame)
@@ -974,10 +984,10 @@ if st.session_state.running:
                 anomaly_info=anomaly_info
             )
 
-            # Mostrar frame
+            # Mostrar frame — enviar como JPEG bytes (30x menos datos por WebSocket)
             video_placeholder.image(
-                frame_to_rgb(annotated),
-                caption=f"Frame #{st.session_state.frame_count} · "
+                frame_to_jpeg_bytes(annotated),
+                caption=f"Frame #{frame_num} · "
                         f"{len(detections)} persona(s) detectada(s)",
             )
 
@@ -990,6 +1000,7 @@ if st.session_state.running:
                     prefix="alerta" if has_alert else "presencia",
                 )
                 st.session_state.last_capture_time = now_ts
+                st.session_state.captures_count += 1
             else:
                 cap_path = ""
 
@@ -1013,54 +1024,54 @@ if st.session_state.running:
                     detalle=f"Se detectó posible crimen: {anomaly_info['class']} (Conf: {anomaly_info['conf']:.0%})",
                 )
 
-            # ── Panel derecho: estado en vivo ─────────────────────────────
-            with live_status.container():
-                if has_alert:
-                    # Buscar la razon de la alerta en los eventos actuales
-                    alert_reason = "Anomalía Detectada"
-                    if events:
-                        # Tomar el último evento sospechoso
-                        suspicious_events = [e for e in events if e["estado"] == "sospechoso"]
-                        if suspicious_events:
-                            alert_reason = suspicious_events[-1]["tipo_evento"]
+            # ── Panel derecho: estado en vivo (throttled) ─────────────────
+            # Solo actualizar cada N frames para evitar overhead de BD queries
+            # y re-renders innecesarios de Streamlit
+            if frame_num % UPDATE_PANEL_EVERY_N == 0:
+                with live_status.container():
+                    if has_alert:
+                        # Buscar la razon de la alerta en los eventos actuales
+                        alert_reason = "Anomalía Detectada"
+                        if events:
+                            # Tomar el último evento sospechoso
+                            suspicious_events = [e for e in events if e["estado"] == "sospechoso"]
+                            if suspicious_events:
+                                alert_reason = suspicious_events[-1]["tipo_evento"]
 
-                    alert_placeholder.markdown(f"""
-                    <div class="alert-box">
-                      <b>ALERTA ACTIVA</b> – {alert_reason}
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    alert_placeholder.markdown("""
-                    <div class="normal-box">
-                      <b>Estado Normal</b> – Sin anomalías detectadas
-                    </div>
-                    """, unsafe_allow_html=True)
+                        alert_placeholder.markdown(f"""
+                        <div class="alert-box">
+                          <b>ALERTA ACTIVA</b> – {alert_reason}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        alert_placeholder.markdown("""
+                        <div class="normal-box">
+                          <b>Estado Normal</b> – Sin anomalías detectadas
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                st.markdown(f"""
-                | Parámetro | Valor |
-                |-----------|-------|
-                | 👤 Personas detectadas | **{len(detections)}** |
-                | 🚨 Alertas activas | **{sum(alerts)}** |
-                | 🎞 Frames procesados | **{st.session_state.frame_count}** |
-                | 📁 Capturas guardadas | **{len(list(Path('captures').glob('*.jpg')))}** |
-                | 🕐 Hora actual | **{datetime.now().strftime('%H:%M:%S')}** |
-                """)
+                    st.markdown(f"""
+                    | Parámetro | Valor |
+                    |-----------|-------|
+                    | 👤 Personas detectadas | **{len(detections)}** |
+                    | 🚨 Alertas activas | **{sum(alerts)}** |
+                    | 🎞 Frames procesados | **{frame_num}** |
+                    | 📁 Capturas guardadas | **{st.session_state.captures_count}** |
+                    | 🕐 Hora actual | **{datetime.now().strftime('%H:%M:%S')}** |
+                    """)
 
-            # Últimos eventos en tiempo real
-            recent = get_all_events(limit=10)
-            with live_events.container():
-                st.markdown("**Últimos eventos**")
-                for ev in recent[:5]:
-                    emoji = get_status_emoji(ev["estado"])
-                    st.markdown(
-                        f"{emoji} `{ev['hora']}` — {ev['tipo_evento']} "
-                        f"(*{ev['duracion']:.1f}s*)"
-                    )
+                # Últimos eventos en tiempo real
+                recent = get_all_events(limit=10)
+                with live_events.container():
+                    st.markdown("**Últimos eventos**")
+                    for ev in recent[:5]:
+                        emoji = get_status_emoji(ev["estado"])
+                        st.markdown(
+                            f"{emoji} `{ev['hora']}` — {ev['tipo_evento']} "
+                            f"(*{ev['duracion']:.1f}s*)"
+                        )
 
             st.session_state.frame_count += 1
-
-            # Pequeña pausa para no saturar CPU
-            time.sleep(0.03)
 
     finally:
         cap.release()
@@ -1237,13 +1248,14 @@ with tab3:
             cols = st.columns(num_cols)
             for col, cap_file in zip(cols, row):
                 with col:
-                    img = cv2.imread(str(cap_file))
-                    if img is not None:
+                    try:
+                        with open(cap_file, "rb") as f:
+                            img_bytes = f.read()
                         st.image(
-                            frame_to_rgb(img),
+                            img_bytes,
                             caption=cap_file.name,
                         )
-                    else:
+                    except Exception:
                         st.warning(f"No se pudo cargar {cap_file.name}")
 
 

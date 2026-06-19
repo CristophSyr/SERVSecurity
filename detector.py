@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -24,6 +25,17 @@ COLOR_ZONE_ALERT     = (0, 0, 255)       # rojo
 COLOR_TEXT           = (255, 255, 255)   # blanco
 COLOR_TEXT_SHADOW    = (0, 0, 0)         # negro
 
+# Conexiones del esqueleto (COCO format) — constante a nivel de módulo
+SKELETON_CONNECTIONS = (
+    (15, 13), (13, 11), (16, 14), (14, 12), (11, 12),
+    (5, 11), (6, 12), (5, 6), (5, 7), (6, 8), (7, 9),
+    (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4),
+    (3, 5), (4, 6),
+)
+
+# Detección de entorno
+_IS_CLOUD = sys.platform.startswith("linux")
+
 
 class PersonDetector:
     """
@@ -43,22 +55,32 @@ class PersonDetector:
 
         self.confidence = confidence
         self.model = YOLO(model_name)
+
+        # Resolución de inferencia adaptativa:
+        # - Nube (CPU): 320px — duplica velocidad, YOLO mapea coordenadas de vuelta al original
+        # - Local (GPU): 640px — máxima precisión
+        self._pose_imgsz = 320 if _IS_CLOUD else 640
+
         # Precalentamiento del modelo
         dummy = np.zeros((480, 640, 3), dtype=np.uint8)
-        self.model(dummy, verbose=False)
+        self.model(dummy, verbose=False, imgsz=self._pose_imgsz)
         
         # Cargar modelo de anomalías si existe (El "Cerebro 2")
         self.anomaly_model = None
+        self._anomaly_imgsz = 224  # Entrenado a 224px — respetar resolución de entrenamiento
         anomaly_path = "runs/classify/servsecurity_anomaly_model/weights/best.pt"
         if os.path.exists(anomaly_path):
             self.anomaly_model = YOLO(anomaly_path)
-            self.anomaly_model(dummy, verbose=False)  # Precalentamiento
+            self.anomaly_model(dummy, verbose=False, imgsz=self._anomaly_imgsz)  # Precalentamiento
             print("✅ Modelo de Anomalías cargado con éxito.")
 
     def detect(self, frame: np.ndarray) -> tuple[list[dict], Optional[dict]]:
     
         # 1. MOTOR 1: Detección de Personas (Pose)
-        results = self.model(frame, verbose=False, conf=self.confidence, classes=[PERSON_CLASS_ID])
+        results = self.model(
+            frame, verbose=False, conf=self.confidence,
+            classes=[PERSON_CLASS_ID], imgsz=self._pose_imgsz,
+        )
         detections = []
 
         for result in results:
@@ -130,7 +152,9 @@ class PersonDetector:
         anomaly_info = None
         if self.anomaly_model is not None and len(detections) > 0:
             # YOLO classification predicts on the whole frame
-            cls_results = self.anomaly_model(frame, verbose=False)
+            cls_results = self.anomaly_model(
+                frame, verbose=False, imgsz=self._anomaly_imgsz,
+            )
             if cls_results and len(cls_results) > 0:
                 probs = cls_results[0].probs
                 if probs is not None:
@@ -181,10 +205,12 @@ def draw_detections(
         any_alert = any(alerts) if alerts else False
         zone_color = COLOR_ZONE_ALERT if any_alert else COLOR_ZONE_NORMAL
 
-        # Overlay semitransparente
-        overlay = output.copy()
-        cv2.rectangle(overlay, (zx1, zy1), (zx2, zy2), zone_color, -1)
-        cv2.addWeighted(overlay, 0.15, output, 0.85, 0, output)
+        # Overlay semitransparente — solo sobre la sub-región de la zona (ROI)
+        # En vez de copiar todo el frame, operamos solo sobre la zona restringida
+        roi = output[zy1:zy2, zx1:zx2]
+        overlay_roi = roi.copy()
+        overlay_roi[:] = zone_color
+        cv2.addWeighted(overlay_roi, 0.15, roi, 0.85, 0, roi)
         cv2.rectangle(output, (zx1, zy1), (zx2, zy2), zone_color, 2)
 
         # Etiqueta de zona
@@ -226,16 +252,8 @@ def draw_detections(
         # ── Dibujar Esqueleto (Keypoints) ─────────────────────────────────────
         kpts = det.get("keypoints")
         if kpts is not None and draw_skeleton:
-            # Lista de conexiones de articulaciones (COCO format)
-            skeleton = [
-                (15, 13), (13, 11), (16, 14), (14, 12), (11, 12),
-                (5, 11), (6, 12), (5, 6), (5, 7), (6, 8), (7, 9),
-                (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4),
-                (3, 5), (4, 6)
-            ]
-            
-            # Dibujar uniones (huesos)
-            for j1, j2 in skeleton:
+            # Dibujar uniones (huesos) — usa constante de módulo
+            for j1, j2 in SKELETON_CONNECTIONS:
                 if j1 < len(kpts) and j2 < len(kpts):
                     p1 = kpts[j1]
                     p2 = kpts[j2]

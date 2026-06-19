@@ -8,11 +8,16 @@ Incluye:
 """
 
 import cv2
+import sys
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 import base64
 import io
+
+
+# ── Detección de entorno ──────────────────────────────────────────────────────
+IS_CLOUD = sys.platform.startswith("linux")
 
 
 CAPTURES_DIR = Path("captures")
@@ -61,6 +66,26 @@ def frame_to_bytes(frame: np.ndarray) -> bytes:
 def frame_to_rgb(frame: np.ndarray) -> np.ndarray:
     """Convierte de BGR a RGB para mostrar con st.image."""
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+
+def frame_to_jpeg_bytes(frame: np.ndarray, quality: int = None) -> bytes:
+    """
+    Convierte un frame BGR directamente a bytes JPEG.
+    Mucho más eficiente que enviar arrays numpy a st.image():
+    - Array numpy ~900KB por frame → JPEG ~30-50KB.
+    - Streamlit acepta bytes directamente, evitando re-encoding interno.
+
+    Args:
+        frame:   Imagen BGR.
+        quality: Calidad JPEG (0-100). Si None, usa 75 en nube y 85 en local.
+
+    Returns:
+        Bytes JPEG listos para st.image().
+    """
+    if quality is None:
+        quality = 70 if IS_CLOUD else 85
+    _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return buffer.tobytes()
 
 
 def resize_frame(frame: np.ndarray, max_width: int = 800) -> np.ndarray:
