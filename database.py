@@ -46,9 +46,16 @@ def init_db():
                 duracion    REAL    DEFAULT 0.0,
                 captura     TEXT    DEFAULT '',
                 detalle     TEXT    DEFAULT '',
+                incident_id TEXT    DEFAULT '',
                 created_at  TEXT    DEFAULT (datetime('now'))
             )
         """)
+
+        # Intentar añadir la columna por si la BD ya existe (migración simple)
+        try:
+            cursor.execute("ALTER TABLE events ADD COLUMN incident_id TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
         # Índice para acelerar consultas por fecha y estado
         cursor.execute("""
@@ -69,6 +76,7 @@ def insert_event(
     duracion: float = 0.0,
     captura: str = "",
     detalle: str = "",
+    incident_id: str = "",
 ) -> int:
     """
     Inserta un nuevo evento en la base de datos.
@@ -79,6 +87,7 @@ def insert_event(
         duracion: Tiempo en segundos que duró el evento.
         captura: Ruta relativa al archivo de captura de imagen.
         detalle: Información adicional.
+        incident_id: ID que agrupa varios eventos relacionados.
 
     Returns:
         ID del evento insertado.
@@ -91,9 +100,9 @@ def insert_event(
     with _lock:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO events (fecha, hora, tipo_evento, estado, duracion, captura, detalle)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (fecha, hora, tipo_evento, estado, duracion, captura, detalle))
+            INSERT INTO events (fecha, hora, tipo_evento, estado, duracion, captura, detalle, incident_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (fecha, hora, tipo_evento, estado, duracion, captura, detalle, incident_id))
         event_id = cursor.lastrowid
         conn.commit()
     return event_id
@@ -113,7 +122,7 @@ def get_all_events(limit: int = 200) -> list[dict]:
     with _lock:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, fecha, hora, tipo_evento, estado, duracion, captura, detalle
+            SELECT id, fecha, hora, tipo_evento, estado, duracion, captura, detalle, incident_id
             FROM events
             ORDER BY id DESC
             LIMIT ?
@@ -159,7 +168,7 @@ def get_events_today() -> list[dict]:
     with _lock:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, fecha, hora, tipo_evento, estado, duracion, captura, detalle
+            SELECT id, fecha, hora, tipo_evento, estado, duracion, captura, detalle, incident_id
             FROM events
             WHERE fecha = ?
             ORDER BY id DESC

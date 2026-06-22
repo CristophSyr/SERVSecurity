@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime
 import base64
 import io
+import os
 
 
 # ── Detección de entorno ──────────────────────────────────────────────────────
@@ -46,7 +47,23 @@ def save_capture(frame: np.ndarray, prefix: str = "event") -> str:
 
     # Guardar con compresión moderada para ahorrar espacio
     cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    cleanup_captures()
     return str(filepath)
+
+def cleanup_captures(max_files: int = 500):
+    """Mantiene como máximo `max_files` imágenes en el directorio de capturas."""
+    try:
+        # Ordenar archivos por fecha de modificación (más antiguo primero)
+        captures = sorted(CAPTURES_DIR.glob("*.jpg"), key=os.path.getmtime)
+        if len(captures) > max_files:
+            # Eliminar los más antiguos
+            for f in captures[:-max_files]:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+    except Exception:
+        pass
 
 
 def frame_to_bytes(frame: np.ndarray) -> bytes:

@@ -1,13 +1,3 @@
-"""
-app.py – Aplicación principal SERVSecurity con Streamlit.
-
-Sistema inteligente de control de acceso físico basado en análisis de video
-para entornos de servidor.
-
-Ejecutar con:
-    streamlit run app.py
-"""
-
 import os
 import sys
 
@@ -50,14 +40,12 @@ def _configure_tf_gpu():
     except Exception:
         pass
 
-_tf_configured = False
+_state = {"tf_configured": False}
 
 from pathlib import Path
 from datetime import datetime
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
 import facial_auth
 
@@ -94,383 +82,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── CSS personalizado ─────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap');
-
-  :root {
-    --bg-primary:   #060a13;
-    --bg-card:      rgba(17,24,39,0.7);
-    --bg-glass:     rgba(15,23,42,0.6);
-    --accent-blue:  #3b82f6;
-    --accent-cyan:  #06b6d4;
-    --accent-green: #10b981;
-    --accent-red:   #ef4444;
-    --accent-amber: #f59e0b;
-    --accent-purple:#8b5cf6;
-    --text-primary: #f1f5f9;
-    --text-muted:   #64748b;
-    --border:       rgba(56,68,90,0.5);
-    --glow-blue:    rgba(59,130,246,0.25);
-    --glow-red:     rgba(239,68,68,0.25);
-    --glow-green:   rgba(16,185,129,0.25);
-    --glow-purple:  rgba(139,92,246,0.2);
-  }
-
-  /* ── Background con gradiente animado ── */
-  html, body, [data-testid="stAppViewContainer"] {
-    background: var(--bg-primary) !important;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.06) 0%, transparent 50%),
-      radial-gradient(ellipse 60% 40% at 80% 20%, rgba(139,92,246,0.05) 0%, transparent 50%),
-      radial-gradient(ellipse 50% 60% at 50% 90%, rgba(6,182,212,0.04) 0%, transparent 50%) !important;
-    font-family: 'Inter', sans-serif !important;
-    color: var(--text-primary) !important;
-  }
-
-  /* ── Sidebar Premium ── */
-  [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, rgba(10,14,26,0.95) 0%, rgba(15,23,42,0.95) 100%) !important;
-    border-right: 1px solid var(--border) !important;
-    backdrop-filter: blur(20px) !important;
-  }
-  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h4 {
-    color: var(--accent-cyan) !important;
-    font-size: 0.85rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1.5px !important;
-    margin-bottom: 0.5rem !important;
-  }
-
-  /* ── Glassmorphism Metric Cards ── */
-  [data-testid="stMetric"] {
-    background: var(--bg-glass) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 16px !important;
-    padding: 1.2rem 1.4rem !important;
-    backdrop-filter: blur(12px) !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05) !important;
-    transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
-  }
-  [data-testid="stMetric"]:hover {
-    transform: translateY(-4px) !important;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 20px var(--glow-blue) !important;
-    border-color: rgba(59,130,246,0.3) !important;
-  }
-  [data-testid="stMetricLabel"] {
-    color: var(--text-muted) !important;
-    font-size: 0.75rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.8px !important;
-  }
-  [data-testid="stMetricValue"] {
-    color: var(--text-primary) !important;
-    font-weight: 800 !important;
-    font-size: 1.8rem !important;
-  }
-  [data-testid="stMetricDelta"] > div {
-    color: var(--accent-red) !important;
-  }
-
-  /* ── Headers ── */
-  h1, h2, h3, h4 {
-    font-family: 'Inter', sans-serif !important;
-    letter-spacing: -0.02em !important;
-  }
-
-  /* ── Premium Buttons ── */
-  .stButton > button {
-    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-cyan) 100%) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.3px !important;
-    transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
-    box-shadow: 0 4px 15px var(--glow-blue), inset 0 1px 0 rgba(255,255,255,0.15) !important;
-    position: relative !important;
-    overflow: hidden !important;
-  }
-  .stButton > button:hover {
-    transform: translateY(-3px) scale(1.02) !important;
-    box-shadow: 0 8px 30px var(--glow-blue), inset 0 1px 0 rgba(255,255,255,0.2) !important;
-    filter: brightness(1.1) !important;
-  }
-  .stButton > button:active {
-    transform: translateY(0) scale(0.98) !important;
-  }
-
-  /* ── Dataframe ── */
-  [data-testid="stDataFrame"] {
-    border-radius: 16px !important;
-    overflow: hidden !important;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3) !important;
-  }
-
-  /* ── Alert Box (ALERTA ACTIVA) ── */
-  .alert-box {
-    background: linear-gradient(135deg, rgba(30,5,5,0.9), rgba(50,10,10,0.8));
-    border: 1px solid rgba(239,68,68,0.5);
-    border-left: 4px solid var(--accent-red);
-    border-radius: 14px;
-    padding: 1.2rem 1.5rem;
-    margin: 0.5rem 0;
-    animation: pulse-red 2s ease-in-out infinite, shake-alert 0.5s ease-in-out;
-    box-shadow: 0 0 30px var(--glow-red), inset 0 0 60px rgba(239,68,68,0.03);
-    backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .alert-box b {
-    font-size: 1.05rem;
-    color: #ff6b6b;
-  }
-  @keyframes pulse-red {
-    0%, 100% { box-shadow: 0 0 20px var(--glow-red); border-color: rgba(239,68,68,0.5); }
-    50%      { box-shadow: 0 0 50px var(--glow-red), 0 0 80px rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.8); }
-  }
-  @keyframes shake-alert {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-3px); }
-    75% { transform: translateX(3px); }
-  }
-
-  /* ── Normal Box ── */
-  .normal-box {
-    background: linear-gradient(135deg, rgba(5,30,20,0.8), rgba(10,40,28,0.7));
-    border: 1px solid rgba(16,185,129,0.3);
-    border-left: 4px solid var(--accent-green);
-    border-radius: 14px;
-    padding: 1rem 1.5rem;
-    margin: 0.3rem 0;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 20px var(--glow-green);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    animation: breathe-green 4s ease-in-out infinite;
-  }
-  .normal-box b { color: #34d399; }
-  @keyframes breathe-green {
-    0%, 100% { box-shadow: 0 4px 20px var(--glow-green); }
-    50%      { box-shadow: 0 4px 30px rgba(16,185,129,0.35); }
-  }
-
-  /* ── Header Banner Premium ── */
-  .header-banner {
-    background: linear-gradient(135deg, rgba(10,14,26,0.9) 0%, rgba(17,24,39,0.85) 50%, rgba(10,14,26,0.9) 100%);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 1.8rem 2.2rem;
-    margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1.2rem;
-    backdrop-filter: blur(16px);
-    box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
-    position: relative;
-    overflow: hidden;
-  }
-  .header-banner::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--accent-blue), var(--accent-cyan), var(--accent-purple), transparent);
-    animation: shimmer-top 3s ease-in-out infinite;
-  }
-  @keyframes shimmer-top {
-    0%, 100% { opacity: 0.6; }
-    50%      { opacity: 1; }
-  }
-  .header-title {
-    font-size: 1.8rem;
-    font-weight: 900;
-    letter-spacing: 0.5px;
-    background: linear-gradient(135deg, #60a5fa, #06b6d4, #8b5cf6);
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: gradient-shift 4s ease infinite;
-  }
-  @keyframes gradient-shift {
-    0%, 100% { background-position: 0% 50%; }
-    50%      { background-position: 100% 50%; }
-  }
-
-  /* ── Status badges ── */
-  .badge-active {
-    background: linear-gradient(135deg, #10b981, #34d399);
-    color: #000;
-    font-weight: 700;
-    padding: 4px 14px;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    box-shadow: 0 0 12px var(--glow-green);
-    animation: pulse-badge 2s ease-in-out infinite;
-  }
-  @keyframes pulse-badge {
-    0%, 100% { box-shadow: 0 0 12px var(--glow-green); }
-    50%      { box-shadow: 0 0 20px rgba(16,185,129,0.5); }
-  }
-  .badge-idle {
-    background: rgba(100,116,139,0.3);
-    color: #94a3b8;
-    font-weight: 600;
-    padding: 4px 14px;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    border: 1px solid rgba(100,116,139,0.3);
-  }
-
-  /* ── Divider ── */
-  hr {
-    border: none !important;
-    height: 1px !important;
-    background: linear-gradient(90deg, transparent, var(--border), transparent) !important;
-    margin: 1rem 0 !important;
-  }
-
-  /* ── Video Container ── */
-  .video-container {
-    border: 1px solid rgba(59,130,246,0.3);
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 0 40px var(--glow-blue);
-    position: relative;
-  }
-
-  /* ── Tabs Premium ── */
-  .stTabs [data-baseweb="tab-list"] {
-    gap: 4px !important;
-    background: var(--bg-glass) !important;
-    border-radius: 14px !important;
-    padding: 4px !important;
-    border: 1px solid var(--border) !important;
-  }
-  .stTabs [data-baseweb="tab"] {
-    border-radius: 10px !important;
-    padding: 8px 20px !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    transition: all 0.2s ease !important;
-  }
-  .stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan)) !important;
-    color: white !important;
-    box-shadow: 0 4px 15px var(--glow-blue) !important;
-  }
-
-  /* ── Section Titles ── */
-  .section-title {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  /* ── Stat Card (para panel derecho) ── */
-  .stat-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin: 0.8rem 0;
-  }
-  .stat-card {
-    background: var(--bg-glass);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px;
-    backdrop-filter: blur(8px);
-    transition: all 0.25s ease;
-  }
-  .stat-card:hover {
-    border-color: rgba(59,130,246,0.3);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-  }
-  .stat-card .stat-label {
-    font-size: 0.68rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 4px;
-  }
-  .stat-card .stat-value {
-    font-size: 1.3rem;
-    font-weight: 800;
-    color: var(--text-primary);
-  }
-  .stat-card .stat-value.blue { color: var(--accent-blue); }
-  .stat-card .stat-value.red { color: var(--accent-red); }
-  .stat-card .stat-value.green { color: var(--accent-green); }
-  .stat-card .stat-value.amber { color: var(--accent-amber); }
-
-  /* ── Event Log Items ── */
-  .event-item {
-    background: var(--bg-glass);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 14px;
-    margin: 6px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 0.82rem;
-    transition: all 0.2s ease;
-    backdrop-filter: blur(8px);
-  }
-  .event-item:hover {
-    border-color: rgba(59,130,246,0.3);
-    transform: translateX(4px);
-  }
-  .event-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .event-dot.red { background: var(--accent-red); box-shadow: 0 0 8px var(--glow-red); }
-  .event-dot.green { background: var(--accent-green); box-shadow: 0 0 8px var(--glow-green); }
-  .event-time { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
-  .event-text { color: var(--text-primary); flex: 1; }
-
-  /* ── Scrollable log ── */
-  .log-container {
-    max-height: 300px;
-    overflow-y: auto;
-    padding-right: 8px;
-  }
-  .log-container::-webkit-scrollbar { width: 5px; }
-  .log-container::-webkit-scrollbar-track { background: transparent; }
-  .log-container::-webkit-scrollbar-thumb { background: rgba(59,130,246,0.3); border-radius: 3px; }
-  .log-container::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,0.5); }
-
-  /* ── Slider styling ── */
-  [data-testid="stSlider"] > div > div > div > div {
-    background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan)) !important;
-  }
-
-  /* ── File uploader ── */
-  [data-testid="stFileUploader"] {
-    border-radius: 12px !important;
-  }
-
-  /* ── Radio buttons in sidebar ── */
-  [data-testid="stSidebar"] .stRadio > div {
-    gap: 2px !important;
-  }
-</style>
-""", unsafe_allow_html=True)
+# ── CSS personalizado (importado de styles.py) ──────────────────────────────
+from styles import get_custom_css
+st.markdown(get_custom_css(), unsafe_allow_html=True)
 
 
 # ── Inicialización de BD ─────────────────────────────────────────────────────
@@ -478,6 +92,25 @@ init_db()
 
 
 # ── Estado de sesión ──────────────────────────────────────────────────────────
+# ── Alarma sonora (solo Windows) ──────────────────────────────────────────────
+_HAS_WINSOUND = False
+if sys.platform == "win32":
+    try:
+        import winsound
+        _HAS_WINSOUND = True
+    except ImportError:
+        pass
+
+ALARM_COOLDOWN_SEC = 10
+
+def _play_alarm():
+    """Reproduce un tono de alarma corto. Solo funciona en Windows."""
+    if _HAS_WINSOUND:
+        # Frecuencia 1000 Hz, duración 400ms — se ejecuta en el hilo principal
+        # winsound.Beep es sincrónico pero 400ms es imperceptible en el loop
+        winsound.Beep(1000, 400)
+
+
 def _init_state():
     defaults = {
         "running":          False,
@@ -489,6 +122,10 @@ def _init_state():
         "events_session":   [],
         "last_event_ids":   set(),
         "captures_count":   0,
+        "last_alarm_time":  0.0,
+        "fps_history":      [],
+        "latency_history":  [],
+        "current_incident_id": "",
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -547,6 +184,17 @@ with st.sidebar:
     # ── Zona restringida ───────────────────────────────────────────────────
     st.markdown("#### Zona restringida")
     st.caption("Define el área protegida (% del ancho/alto del frame)")
+
+    col_preset1, col_preset2, col_preset3 = st.columns(3)
+    if col_preset1.button("Pantalla completa"):
+        st.session_state.zx1, st.session_state.zy1 = 0, 0
+        st.session_state.zx2, st.session_state.zy2 = 100, 100
+    if col_preset2.button("Mitad inferior"):
+        st.session_state.zx1, st.session_state.zy1 = 0, 50
+        st.session_state.zx2, st.session_state.zy2 = 100, 100
+    if col_preset3.button("Centro"):
+        st.session_state.zx1, st.session_state.zy1 = 25, 25
+        st.session_state.zx2, st.session_state.zy2 = 75, 75
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -711,9 +359,24 @@ with vid_col:
     video_placeholder = st.empty()
     alert_placeholder = st.empty()
 
-    # Imagen inicial cuando el sistema está inactivo
+    # Imagen inicial con preview de la zona restringida
     if not st.session_state.running:
         dummy = np.zeros((360, 640, 3), dtype=np.uint8)
+
+        # Dibujar preview de la zona restringida
+        zx1 = int(zone_x1 / 100 * 640)
+        zy1 = int(zone_y1 / 100 * 360)
+        zx2 = int(zone_x2 / 100 * 640)
+        zy2 = int(zone_y2 / 100 * 360)
+        # Relleno semitransparente naranja
+        overlay = dummy.copy()
+        cv2.rectangle(overlay, (zx1, zy1), (zx2, zy2), (0, 165, 255), -1)
+        cv2.addWeighted(overlay, 0.15, dummy, 0.85, 0, dummy)
+        # Borde de la zona
+        cv2.rectangle(dummy, (zx1, zy1), (zx2, zy2), (0, 165, 255), 2)
+        cv2.putText(dummy, "ZONA RESTRINGIDA", (zx1 + 8, zy1 + 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
+
         # Texto de bienvenida
         cv2.putText(dummy, "SERVSecurity", (150, 160),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.5, (59, 130, 246), 3)
@@ -748,9 +411,9 @@ if btn_start and not st.session_state.running:
         authenticator = None
         if use_face_auth:
             with st.spinner("Cargando motor de Autenticación Facial..."):
-                if not _tf_configured and not sys.platform.startswith("linux"):
+                if not _state["tf_configured"] and not sys.platform.startswith("linux"):
                     _configure_tf_gpu()
-                    _tf_configured = True
+                    _state["tf_configured"] = True
                 authenticator = facial_auth.FacialAuthenticator()
 
         st.session_state.rules_engine = RulesEngine(
@@ -936,8 +599,12 @@ if st.session_state.running:
     last_anomaly = None
     last_alerts = []
 
+    loop_start_time = time.time()
+
     try:
         while st.session_state.running:
+            frame_start = time.time()
+
             ret, frame = cap.read()
 
             if not ret:
@@ -961,12 +628,20 @@ if st.session_state.running:
             frame_num = st.session_state.frame_count
             run_ai = (frame_num % PROCESS_EVERY_N == 0)
 
+            inference_ms = 0.0
             if run_ai:
+                t0 = time.time()
                 detections, anomaly_info = detector.detect(frame)
+                inference_ms = (time.time() - t0) * 1000
                 alerts, events = rules_engine.evaluate(detections)
                 last_detections = detections
                 last_anomaly = anomaly_info
                 last_alerts = alerts
+                # Registrar latencia
+                lat_hist = st.session_state.latency_history
+                lat_hist.append(inference_ms)
+                if len(lat_hist) > 60:
+                    lat_hist.pop(0)
             else:
                 detections = last_detections
                 anomaly_info = last_anomaly
@@ -974,7 +649,23 @@ if st.session_state.running:
                 events = []
 
             has_alert = any(alerts) or anomaly_info is not None
+
+            # ── Agrupación de Incidentes ──────────────────────────────────
+            if has_alert and not st.session_state.alert_active:
+                # Inició una nueva alerta (nuevo incidente)
+                st.session_state.current_incident_id = f"INC_{int(time.time())}"
+            elif not has_alert and st.session_state.alert_active:
+                # Terminó la alerta
+                st.session_state.current_incident_id = ""
+
             st.session_state.alert_active = has_alert
+
+            # ── Alarma sonora (Comentada temporalmente para pruebas) ──────
+            # if has_alert:
+            #     now_alarm = time.time()
+            #     if now_alarm - st.session_state.last_alarm_time >= ALARM_COOLDOWN_SEC:
+            #         _play_alarm()
+            #         st.session_state.last_alarm_time = now_alarm
 
             # Dibujar anotaciones
             annotated = draw_detections(
@@ -984,11 +675,21 @@ if st.session_state.running:
                 anomaly_info=anomaly_info
             )
 
-            # Mostrar frame — enviar como JPEG bytes (30x menos datos por WebSocket)
+            # ── Calcular FPS ──────────────────────────────────────────────
+            frame_elapsed = time.time() - frame_start
+            current_fps = 1.0 / max(frame_elapsed, 0.001)
+            fps_hist = st.session_state.fps_history
+            fps_hist.append(current_fps)
+            if len(fps_hist) > 60:
+                fps_hist.pop(0)
+
+            # Mostrar frame
+            avg_fps = sum(fps_hist) / len(fps_hist)
             video_placeholder.image(
                 frame_to_jpeg_bytes(annotated),
                 caption=f"Frame #{frame_num} · "
-                        f"{len(detections)} persona(s) detectada(s)",
+                        f"{len(detections)} persona(s) · "
+                        f"{avg_fps:.1f} FPS",
             )
 
             # ── Guardar captura periódica ─────────────────────────────────
@@ -1005,6 +706,7 @@ if st.session_state.running:
                 cap_path = ""
 
             # ── Registrar eventos en BD ───────────────────────────────────
+            inc_id = st.session_state.current_incident_id
             for event in events:
                 insert_event(
                     tipo_evento=event["tipo_evento"],
@@ -1012,6 +714,7 @@ if st.session_state.running:
                     duracion   =event["duracion"],
                     captura    =cap_path,
                     detalle    =event.get("detalle", ""),
+                    incident_id=inc_id,
                 )
             
             # Registrar evento de anomalía si se detecta
@@ -1022,6 +725,7 @@ if st.session_state.running:
                     duracion=0,
                     captura=cap_path,
                     detalle=f"Se detectó posible crimen: {anomaly_info['class']} (Conf: {anomaly_info['conf']:.0%})",
+                    incident_id=inc_id,
                 )
 
             # ── Panel derecho: estado en vivo (throttled) ─────────────────
@@ -1050,6 +754,11 @@ if st.session_state.running:
                         </div>
                         """, unsafe_allow_html=True)
 
+                    # Calcular métricas de rendimiento
+                    avg_fps_panel = sum(st.session_state.fps_history) / max(len(st.session_state.fps_history), 1)
+                    lat_hist = st.session_state.latency_history
+                    avg_lat = sum(lat_hist) / max(len(lat_hist), 1)
+
                     st.markdown(f"""
                     | Parámetro | Valor |
                     |-----------|-------|
@@ -1057,6 +766,8 @@ if st.session_state.running:
                     | 🚨 Alertas activas | **{sum(alerts)}** |
                     | 🎞 Frames procesados | **{frame_num}** |
                     | 📁 Capturas guardadas | **{st.session_state.captures_count}** |
+                    | ⚡ FPS promedio | **{avg_fps_panel:.1f}** |
+                    | 🧠 Latencia IA | **{avg_lat:.0f} ms** |
                     | 🕐 Hora actual | **{datetime.now().strftime('%H:%M:%S')}** |
                     """)
 
@@ -1081,239 +792,7 @@ if st.session_state.running:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# DASHBOARD – Historial, gráficos y capturas
+# DASHBOARD (importado de dashboard.py)
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown("---")
-st.markdown("## Dashboard de Análisis")
-
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Historial de Eventos",
-    "Graficos",
-    "Capturas",
-    "Acerca de",
-])
-
-
-# ── Tab 1: Historial ──────────────────────────────────────────────────────
-with tab1:
-    all_events = get_all_events(limit=200)
-
-    if not all_events:
-        st.info("No hay eventos registrados aún. Inicia el sistema para comenzar.")
-    else:
-        df = pd.DataFrame(all_events)
-
-        # Filtros
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            estados = ["Todos"] + df["estado"].unique().tolist()
-            filtro_estado = st.selectbox("Filtrar por estado", estados)
-        with col_f2:
-            tipos = ["Todos"] + df["tipo_evento"].unique().tolist()
-            filtro_tipo = st.selectbox("Filtrar por tipo", tipos)
-        with col_f3:
-            fechas = ["Todas"] + df["fecha"].unique().tolist()
-            filtro_fecha = st.selectbox("Filtrar por fecha", fechas)
-
-        df_filtrado = df.copy()
-        if filtro_estado != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["estado"] == filtro_estado]
-        if filtro_tipo != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["tipo_evento"] == filtro_tipo]
-        if filtro_fecha != "Todas":
-            df_filtrado = df_filtrado[df_filtrado["fecha"] == filtro_fecha]
-
-        # Formatear columnas
-        df_display = df_filtrado[["fecha", "hora", "tipo_evento", "estado", "duracion", "detalle"]].copy()
-        df_display["estado"] = df_display["estado"].apply(
-            lambda s: f"{'Sospechoso' if s == 'sospechoso' else 'Normal'}"
-        )
-        df_display["duracion"] = df_display["duracion"].apply(
-            lambda d: format_duration(d)
-        )
-        df_display.columns = ["Fecha", "Hora", "Tipo de Evento", "Estado", "Duración", "Detalle"]
-
-        st.dataframe(
-            df_display,
-            height=400,
-        )
-        st.caption(f"Mostrando {len(df_filtrado)} de {len(all_events)} eventos")
-
-        # Exportar CSV
-        csv = df_filtrado.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Exportar CSV",
-            csv,
-            "servsecurity_eventos.csv",
-            "text/csv",
-        )
-
-
-# ── Tab 2: Gráficos ───────────────────────────────────────────────────────
-with tab2:
-    all_events_graph = get_all_events(limit=500)
-
-    if not all_events_graph:
-        st.info("Sin datos suficientes para mostrar gráficos.")
-    else:
-        df_g = pd.DataFrame(all_events_graph)
-
-        gcol1, gcol2 = st.columns(2)
-
-        with gcol1:
-            # Gráfico de dona: eventos por tipo
-            counts = get_event_counts_by_type()
-            fig_pie = go.Figure(data=[go.Pie(
-                labels=list(counts.keys()),
-                values=list(counts.values()),
-                hole=0.5,
-                marker_colors=["#ef4444", "#f59e0b", "#a855f7", "#10b981"],
-                textfont_size=12,
-            )])
-            fig_pie.update_layout(
-                title="Distribución de Eventos por Tipo",
-                paper_bgcolor="#111827",
-                plot_bgcolor="#111827",
-                font_color="#f1f5f9",
-                legend=dict(bgcolor="#111827"),
-                margin=dict(t=50, b=10, l=10, r=10),
-            )
-            st.plotly_chart(fig_pie)
-
-        with gcol2:
-            # Gráfico de barras: eventos por estado
-            estado_counts = df_g["estado"].value_counts().reset_index()
-            estado_counts.columns = ["Estado", "Cantidad"]
-            color_map = {"sospechoso": "#ef4444", "normal": "#10b981"}
-            fig_bar = px.bar(
-                estado_counts,
-                x="Estado",
-                y="Cantidad",
-                color="Estado",
-                color_discrete_map=color_map,
-                title="Eventos por Estado",
-                template="plotly_dark",
-            )
-            fig_bar.update_layout(
-                paper_bgcolor="#111827",
-                plot_bgcolor="#111827",
-                font_color="#f1f5f9",
-                showlegend=False,
-                margin=dict(t=50, b=10, l=10, r=10),
-            )
-            st.plotly_chart(fig_bar)
-
-        # Línea temporal de alertas
-        df_alerts = df_g[df_g["estado"] == "sospechoso"].copy()
-        if not df_alerts.empty:
-            df_alerts["datetime"] = pd.to_datetime(
-                df_alerts["fecha"] + " " + df_alerts["hora"]
-            )
-            df_alerts_by_hour = (
-                df_alerts.groupby(df_alerts["datetime"].dt.floor("h"))
-                .size()
-                .reset_index(name="Alertas")
-            )
-            df_alerts_by_hour.columns = ["Hora", "Alertas"]
-            fig_line = px.line(
-                df_alerts_by_hour,
-                x="Hora",
-                y="Alertas",
-                title="Alertas a lo largo del tiempo",
-                markers=True,
-                template="plotly_dark",
-                color_discrete_sequence=["#ef4444"],
-            )
-            fig_line.update_layout(
-                paper_bgcolor="#111827",
-                plot_bgcolor="#111827",
-                font_color="#f1f5f9",
-                margin=dict(t=50, b=10, l=10, r=10),
-            )
-            st.plotly_chart(fig_line)
-
-
-# ── Tab 3: Capturas ───────────────────────────────────────────────────────
-with tab3:
-    captures_path = Path("captures")
-    captures = sorted(captures_path.glob("*.jpg"), reverse=True) if captures_path.exists() else []
-
-    if not captures:
-        st.info("No hay capturas guardadas aún.")
-    else:
-        st.markdown(f"**{len(captures)} capturas** almacenadas en `/captures`")
-        num_cols = 3
-        rows = [captures[i:i+num_cols] for i in range(0, min(len(captures), 12), num_cols)]
-        for row in rows:
-            cols = st.columns(num_cols)
-            for col, cap_file in zip(cols, row):
-                with col:
-                    try:
-                        with open(cap_file, "rb") as f:
-                            img_bytes = f.read()
-                        st.image(
-                            img_bytes,
-                            caption=cap_file.name,
-                        )
-                    except Exception:
-                        st.warning(f"No se pudo cargar {cap_file.name}")
-
-
-# ── Tab 4: Acerca de ──────────────────────────────────────────────────────
-with tab4:
-    st.markdown("""
-    ## 🔐 SERVSecurity v1.0
-
-    **Sistema Inteligente de Control de Acceso Físico basado en Análisis de Video**
-
-    ---
-
-    ### 🎯 Objetivo
-    Demo académica de un sistema de vigilancia inteligente para entornos de servidores,
-    que detecta personas y anomalías de comportamiento en tiempo real usando visión por computadora.
-
-    ---
-
-    ### 🧠 Tecnologías utilizadas
-
-    | Componente | Tecnología |
-    |-----------|-----------|
-    | Detección de personas | YOLOv8n (Ultralytics) |
-    | Motor de reglas | Python puro (reglas de comportamiento) |
-    | Base de datos | SQLite3 |
-    | Dashboard | Streamlit + Plotly |
-    | Procesamiento de video | OpenCV |
-
-    ---
-
-    ### 📋 Reglas de anomalía implementadas
-
-    | # | Regla | Severidad |
-    |---|-------|-----------|
-    | 1 | Persona dentro de la zona restringida | 🔴 Alto |
-    | 2 | Permanencia mayor a X segundos en zona | 🔴 Alto |
-    | 3 | Ingreso fuera del horario permitido | 🔴 Alto |
-    | 4 | Presencia detectada (sin anomalía) | 🟢 Normal |
-
-    ---
-
-    ### 📁 Estructura del proyecto
-
-    ```
-    SERVSecurity/
-    ├── app.py          # Dashboard Streamlit
-    ├── detector.py     # Detección YOLOv8
-    ├── rules.py        # Motor de reglas
-    ├── database.py     # SQLite
-    ├── utils.py        # Utilidades
-    ├── requirements.txt
-    ├── README.md
-    ├── captures/       # Capturas de eventos
-    └── data/           # Base de datos
-    ```
-
-    ---
-
-    ### 👨‍💻 Autores
-    Proyecto académico — CristophSyr · GitHub: [SERVSecurity](https://github.com/CristophSyr/SERVSecurity)
-    """)
+from dashboard import render_dashboard
+render_dashboard()

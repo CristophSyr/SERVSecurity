@@ -1,13 +1,4 @@
-"""
-rules.py – Motor de reglas para detección de anomalías de comportamiento.
-
-Las anomalías se definen como:
-  1. Persona dentro de la zona restringida.
-  2. Permanencia mayor a X segundos dentro de la zona.
-  3. Ingreso durante horario no permitido.
-"""
-
-from datetime import datetime, time as dtime
+from datetime import datetime
 from typing import Optional
 
 
