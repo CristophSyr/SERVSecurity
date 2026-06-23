@@ -235,9 +235,18 @@ class RulesEngine:
                 nose = kpts[0]
                 hip_l = kpts[11]
                 hip_r = kpts[12]
-                if nose[0] != 0 and hip_l[0] != 0:
+                
+                valid_hips_y = []
+                if hip_l[0] != 0:
+                    valid_hips_y.append(hip_l[1])
+                if hip_r[0] != 0:
+                    valid_hips_y.append(hip_r[1])
+                
+                if nose[0] != 0 and valid_hips_y:
+                    # Usamos el promedio de altura de las caderas válidas
                     # Coordenada Y crece hacia abajo en imágenes
-                    if nose[1] > hip_l[1]:
+                    avg_hip_y = sum(valid_hips_y) / len(valid_hips_y)
+                    if nose[1] > avg_hip_y:
                         head_below_waist = True
 
             if aspect_ratio > self.max_aspect_ratio or head_below_waist:
