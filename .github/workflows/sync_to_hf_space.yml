@@ -17,9 +17,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install dependencies
-        run: pip install huggingface_hub
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: huggingface-cli upload Magnus1510/ServSecurityHost . . --repo-type space --token $HF_TOKEN --exclude ".git/*" ".venv/*" ".github/*" "__pycache__/*"
+        run: |
+          git remote add space https://Magnus1510:$HF_TOKEN@huggingface.co/spaces/Magnus1510/ServSecurityHost
+          git push --force space main

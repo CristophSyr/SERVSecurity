@@ -27,6 +27,15 @@ class FacialAuthenticator:
         self.model_name = "Facenet"
         self.executor = ThreadPoolExecutor(max_workers=2)
         self._lock = threading.Lock()
+        
+        # FIX: Eliminar caché de DeepFace (.pkl) al iniciar.
+        # DeepFace guarda rutas absolutas en este archivo. Si mueves el disco duro
+        # a otra PC, la ruta cambia y falla. Al borrarlo, forzamos a que lo regenere.
+        for pkl_file in Path(self.db_path).glob("*.pkl"):
+            try:
+                pkl_file.unlink()
+            except OSError:
+                pass
 
     def authenticate_async(self, frame_crop: np.ndarray, track, callback=None):
         """
