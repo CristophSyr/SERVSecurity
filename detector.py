@@ -73,6 +73,12 @@ class PersonDetector:
         # Cargar modelo de anomalías si existe (El "Cerebro 2")
         self.anomaly_model = None
         self._anomaly_imgsz = 224  # Entrenado a 224px — respetar resolución de entrenamiento
+        # Frame-skip del modelo de anomalías:
+        # No es necesario clasificar cada frame. Correr cada N frames ahorra
+        # 50-150ms por frame en CPU sin perder calidad de detección.
+        self._anomaly_run_every = 6 if _IS_CLOUD else 3
+        self._anomaly_frame_count = 0
+        self._last_anomaly_info = None  # Cache del último resultado
         anomaly_path = "runs/classify/servsecurity_anomaly_model/weights/best.pt"
         if os.path.exists(anomaly_path):
             self.anomaly_model = YOLO(anomaly_path)
@@ -153,26 +159,41 @@ class PersonDetector:
                     "crop": head_crop
                 })
 
-        # 2. MOTOR 2: Clasificación de Anomalías (Solo si hay personas y el modelo existe)
-        anomaly_info = None
-        if self.anomaly_model is not None and len(detections) > 0:
-            # YOLO classification predicts on the whole frame
+        # 2. MOTOR 2: Clasificación de Anomalías (frame-skipping adaptativo)
+        # Solo se ejecuta cada N frames para ahorrar CPU, reutilizando el
+        # último resultado conocido en los frames intermedios.
+        self._anomaly_frame_count += 1
+        run_anomaly = (
+            self.anomaly_model is not None
+            and len(detections) > 0
+            and self._anomaly_frame_count % self._anomaly_run_every == 0
+        )
+
+        if run_anomaly:
             cls_results = self.anomaly_model(
                 frame, verbose=False, imgsz=self._anomaly_imgsz,
             )
+            anomaly_info = None
             if cls_results and len(cls_results) > 0:
                 probs = cls_results[0].probs
                 if probs is not None:
                     top_class_idx = probs.top1
                     top_conf = float(probs.top1conf)
                     top_class_name = cls_results[0].names[top_class_idx]
-                    
-                    # Si no es normal y hay buena confianza, lanzar alerta
+
                     if top_class_name.lower() != "normal" and top_conf > 0.70:
                         anomaly_info = {
                             "class": top_class_name.upper(),
-                            "conf": top_conf
+                            "conf": top_conf,
                         }
+            self._last_anomaly_info = anomaly_info
+        else:
+            # Reutilizar el último resultado conocido
+            anomaly_info = self._last_anomaly_info
+            # Si ya no hay personas en el frame, limpiar el cache de anomalía
+            if len(detections) == 0:
+                self._last_anomaly_info = None
+                anomaly_info = None
 
         return detections, anomaly_info
 

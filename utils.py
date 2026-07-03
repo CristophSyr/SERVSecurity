@@ -23,6 +23,11 @@ IS_CLOUD = sys.platform.startswith("linux")
 
 CAPTURES_DIR = Path("captures")
 
+# Contador interno para ejecutar cleanup solo cada N capturas.
+# Evita glob()+sort() en disco en cada imagen guardada.
+_capture_save_count = 0
+_CLEANUP_EVERY_N_SAVES = 50
+
 
 def ensure_captures_dir():
     """Crea el directorio de capturas si no existe."""
@@ -40,6 +45,7 @@ def save_capture(frame: np.ndarray, prefix: str = "event") -> str:
     Returns:
         Ruta relativa del archivo guardado (str).
     """
+    global _capture_save_count
     ensure_captures_dir()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename = f"{prefix}_{ts}.jpg"
@@ -47,7 +53,12 @@ def save_capture(frame: np.ndarray, prefix: str = "event") -> str:
 
     # Guardar con compresión moderada para ahorrar espacio
     cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    cleanup_captures()
+
+    # Limpieza perezosa: solo cada N capturas para no hacer glob+sort en cada frame
+    _capture_save_count += 1
+    if _capture_save_count % _CLEANUP_EVERY_N_SAVES == 0:
+        cleanup_captures()
+
     return str(filepath)
 
 def cleanup_captures(max_files: int = 500):

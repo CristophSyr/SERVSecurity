@@ -261,6 +261,11 @@ with st.sidebar:
         "Activar Reconocimiento Facial", value=True,
         help="Si está activo, solo las personas en la carpeta 'authorized_faces' pueden entrar a la zona."
     )
+    if IS_CLOUD and use_face_auth:
+        st.warning(
+            "💡 En la nube el reconocimiento facial tarda más (CPU limitada). "
+            "El primer análisis puede demorar 3-8 segundos."
+        )
     st.info("Coloca fotos en la carpeta `authorized_faces/`")
 
     st.markdown("---")
@@ -588,12 +593,12 @@ if st.session_state.running:
     stop_btn_placeholder = st.empty()
 
     # Frame-skipping adaptativo:
-    # - Nube (CPU limitada): procesar IA cada 5 frames
-    # - Local (GPU): procesar IA cada 2 frames para máxima fluidez
-    PROCESS_EVERY_N = 5 if IS_CLOUD else 2
+    # - Nube (CPU limitada): procesar IA cada 8 frames
+    # - Local (GPU): procesar IA cada 3 frames para mejor fluidez
+    PROCESS_EVERY_N = 8 if IS_CLOUD else 3
     # Throttle del panel derecho: actualizar info cada N frames
     # (evita consultas BD y re-render de Streamlit en cada iteración)
-    UPDATE_PANEL_EVERY_N = 10 if IS_CLOUD else 5
+    UPDATE_PANEL_EVERY_N = 25 if IS_CLOUD else 15
 
     last_detections = []
     last_anomaly = None
@@ -783,6 +788,11 @@ if st.session_state.running:
                         )
 
             st.session_state.frame_count += 1
+
+            # Ceder CPU al event loop de Streamlit en cada frame.
+            # Sin este sleep, el while True monopoliza la CPU e impide que
+            # Streamlit procese clics del botón Detener y otras actualizaciones de UI.
+            time.sleep(0.01)
 
     finally:
         cap.release()
