@@ -1,3 +1,14 @@
+---
+title: ServSecurityHost
+emoji: 🛡️
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: 1.58.0
+python_version: 3.12
+app_file: app.py
+pinned: false
+---
 # SERVSecurity
 
 **Sistema Inteligente de Control de Acceso Físico basado en Análisis de Video con IA**
