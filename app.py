@@ -256,7 +256,7 @@ with st.sidebar:
     # ── Biometría Facial ───────────────────────────────────────────────────
     st.markdown("#### Autenticación Biométrica")
     st.caption("Reconocimiento Facial mediante IA (One-Shot Learning)")
-    
+
     use_face_auth = st.checkbox(
         "Activar Reconocimiento Facial", value=True,
         help="Si está activo, solo las personas en la carpeta 'authorized_faces' pueden entrar a la zona."
@@ -266,7 +266,113 @@ with st.sidebar:
             "💡 En la nube el reconocimiento facial tarda más (CPU limitada). "
             "El primer análisis puede demorar 3-8 segundos."
         )
-    st.info("Coloca fotos en la carpeta `authorized_faces/`")
+
+    # ── Gestión de rostros autorizados ─────────────────────────────────────
+    FACES_DIR = Path("authorized_faces")
+    FACES_DIR.mkdir(exist_ok=True)
+
+    with st.expander("👤 Gestionar Rostros Autorizados", expanded=False):
+
+        # Contar caras existentes
+        existing_faces = sorted([
+            f for f in FACES_DIR.iterdir()
+            if f.suffix.lower() in (".jpg", ".jpeg", ".png")
+        ])
+        st.caption(f"{len(existing_faces)} persona(s) registrada(s)")
+
+        # ── Subir foto desde PC ────────────────────────────────────────────
+        st.markdown("**📤 Añadir por foto**")
+        face_name = st.text_input(
+            "Nombre completo / ID",
+            placeholder="ej: GARCIA JUAN 12345678",
+            key="face_name_input",
+        )
+        uploaded_face = st.file_uploader(
+            "Selecciona la foto",
+            type=["jpg", "jpeg", "png"],
+            key="face_uploader",
+            label_visibility="collapsed",
+        )
+        if st.button("💾 Guardar rostro", use_container_width=True, key="btn_save_face"):
+            if not face_name.strip():
+                st.warning("⚠️ Escribe el nombre antes de guardar.")
+            elif uploaded_face is None:
+                st.warning("⚠️ Selecciona una foto primero.")
+            else:
+                safe_name = face_name.strip().replace("/", "-").replace("\\", "-")
+                ext = Path(uploaded_face.name).suffix.lower() or ".jpg"
+                dest = FACES_DIR / f"{safe_name}{ext}"
+                dest.write_bytes(uploaded_face.getvalue())
+                # Borrar caché .pkl para que DeepFace re-indexe
+                for pkl in FACES_DIR.glob("*.pkl"):
+                    try:
+                        pkl.unlink()
+                    except OSError:
+                        pass
+                st.success(f"✅ **{safe_name}** guardado correctamente.")
+                st.rerun()
+
+        st.markdown("---")
+
+        # ── Capturar desde webcam ──────────────────────────────────────────
+        st.markdown("**📸 Capturar desde cámara**")
+        cam_name = st.text_input(
+            "Nombre para la captura",
+            placeholder="ej: PEREZ MARIA 98765432",
+            key="cam_name_input",
+        )
+        cam_photo = st.camera_input(
+            "Toma la foto",
+            key="face_camera",
+            label_visibility="collapsed",
+        )
+        if st.button("💾 Guardar captura", use_container_width=True, key="btn_save_cam"):
+            if not cam_name.strip():
+                st.warning("⚠️ Escribe el nombre antes de guardar.")
+            elif cam_photo is None:
+                st.warning("⚠️ Toma una foto primero.")
+            else:
+                safe_name = cam_name.strip().replace("/", "-").replace("\\", "-")
+                dest = FACES_DIR / f"{safe_name}.jpg"
+                dest.write_bytes(cam_photo.getvalue())
+                for pkl in FACES_DIR.glob("*.pkl"):
+                    try:
+                        pkl.unlink()
+                    except OSError:
+                        pass
+                st.success(f"✅ **{safe_name}** guardado correctamente.")
+                st.rerun()
+
+        st.markdown("---")
+
+        # ── Galería de rostros registrados ────────────────────────────────
+        if existing_faces:
+            st.markdown("**🗂️ Personas registradas**")
+            for face_path in existing_faces:
+                col_img, col_info, col_del = st.columns([1, 3, 1])
+                with col_img:
+                    try:
+                        st.image(str(face_path), width=48)
+                    except Exception:
+                        st.write("🖼️")
+                with col_info:
+                    st.caption(face_path.stem)
+                with col_del:
+                    if st.button(
+                        "🗑️",
+                        key=f"del_{face_path.name}",
+                        help=f"Eliminar {face_path.stem}",
+                    ):
+                        face_path.unlink(missing_ok=True)
+                        for pkl in FACES_DIR.glob("*.pkl"):
+                            try:
+                                pkl.unlink()
+                            except OSError:
+                                pass
+                        st.success(f"🗑️ **{face_path.stem}** eliminado.")
+                        st.rerun()
+        else:
+            st.info("No hay personas registradas aún.")
 
     st.markdown("---")
 
