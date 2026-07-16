@@ -30,13 +30,10 @@ if sys.platform.startswith("linux"):
     cv2.setNumThreads(1)
 
 def _configure_tf_gpu():
-    """Configura TensorFlow para compartir la GPU. Se llama solo cuando se activa reconocimiento facial."""
+    """Configura TensorFlow para usar CPU únicamente y prevenir conflictos de GPU."""
     try:
         import tensorflow as tf
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
+        tf.config.set_visible_devices([], 'GPU')
     except Exception:
         pass
 

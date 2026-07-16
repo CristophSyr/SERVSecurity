@@ -8,6 +8,15 @@ import sys
 import io
 import time
 
+# Configurar TensorFlow para usar estrictamente la CPU antes de importar DeepFace.
+# Esto evita conflictos críticos de VRAM y deadlocks entre PyTorch (YOLOv8) y TensorFlow (DeepFace).
+try:
+    import tensorflow as tf
+    tf.config.set_visible_devices([], 'GPU')
+    print("[FacialAuth] TensorFlow configurado en modo CPU para estabilidad.")
+except Exception as e:
+    print(f"[FacialAuth] No se pudo configurar TensorFlow en CPU: {e}")
+
 # DeepFace se importa al top para que _prebuild_index y _verify lo compartan.
 # El import tarda ~2s la primera vez (carga Keras/TF), pero solo ocurre una vez.
 from deepface import DeepFace
@@ -23,8 +32,8 @@ os.makedirs(FACES_DIR, exist_ok=True)
 # Detectar entorno
 _IS_CLOUD = sys.platform.startswith("linux")
 
-# En nube: 1 worker para no agotar RAM. En local: 2 workers para paralelismo.
-_MAX_WORKERS = 1 if _IS_CLOUD else 2
+# Usar siempre 1 worker para evitar ejecuciones concurrentes de DeepFace y prevenir deadlocks/crashes
+_MAX_WORKERS = 1
 
 # Timeout máximo por verificación (segundos)
 _VERIFY_TIMEOUT = 15 if _IS_CLOUD else 10
