@@ -8,6 +8,10 @@ import sys
 import io
 import time
 
+# DeepFace se importa al top para que _prebuild_index y _verify lo compartan.
+# El import tarda ~2s la primera vez (carga Keras/TF), pero solo ocurre una vez.
+from deepface import DeepFace
+
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 if sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
@@ -71,29 +75,49 @@ class FacialAuthenticator:
         Construye el índice de DeepFace (archivo .pkl) con una imagen dummy.
         Así la primera verificación real no paga el coste de indexación.
         """
-        try:
-            from deepface import DeepFace
-            # Imagen dummy de 112x112 (tamaño mínimo aceptado por Facenet)
+        # Seleccionamos la primera foto válida de la base para crear un índice real
+        first_image_path = None
+        for f in os.listdir(self.db_path):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg')):
+                first_image_path = os.path.join(self.db_path, f)
+                break
+        if first_image_path is None:
+            # No hay fotos, usamos dummy como fallback
             dummy_img = np.zeros((112, 112, 3), dtype=np.uint8)
-            # silent=True suprime logs; enforce_detection=False permite cara vacía
-            DeepFace.find(
-                img_path=dummy_img,
-                db_path=self.db_path,
-                model_name=self.model_name,
-                # CRÍTICO: Usar opencv aquí para que extraiga las caras reales
-                # de las fotos de cuerpo/fondo guardadas en la carpeta.
-                detector_backend="opencv",
-                enforce_detection=False,
-                silent=True,
-            )
-            with self._lock:
-                self._index_ready = True
-            print("[FacialAuth] Índice pre-construido correctamente.")
-        except Exception as e:
-            print(f"[FacialAuth] Advertencia al pre-construir índice: {e}")
-            # Aunque falle el pre-build, las verificaciones reales aún funcionarán
-            with self._lock:
-                self._index_ready = True  # marcar listo para no bloquear
+            img_to_use = dummy_img
+        else:
+            img = cv2.imread(first_image_path)
+            if img is None:
+                # Si la lectura falla, caer a dummy
+                dummy_img = np.zeros((112, 112, 3), dtype=np.uint8)
+                img_to_use = dummy_img
+            else:
+                img_to_use = img
+        # Usa opencv para extraer caras reales del/las foto(s) y crear .pkl
+        DeepFace.find(
+            img_path=img_to_use,
+            db_path=self.db_path,
+            model_name=self.model_name,
+            detector_backend="opencv",
+            enforce_detection=False,
+            silent=True,
+        )
+
+        # Verificar que el .pkl generado sea válido (> 1 KB)
+        pkl_files = list(Path(self.db_path).glob("*.pkl"))
+        if pkl_files:
+            pkl_size = pkl_files[0].stat().st_size
+            print(f"[FacialAuth] Índice pre-construido. Tamaño .pkl: {pkl_size} bytes")
+            if pkl_size < 1024:
+                print("[FacialAuth] ADVERTENCIA: .pkl parece vacío o corrupto. Se reintentará en la próxima verificación.")
+                return  # No marcar como ready si el índice es inválido
+        else:
+            print("[FacialAuth] ADVERTENCIA: No se generó ningún .pkl. Verifica que las fotos tengan caras detectables.")
+            return
+
+        with self._lock:
+            self._index_ready = True
+        print("[FacialAuth] _index_ready = True. Reconocimiento facial activado.")
 
     def authenticate_async(self, frame_crop: np.ndarray, track, callback=None):
         """
@@ -129,7 +153,6 @@ class FacialAuthenticator:
                 if h < 80 or w < 80:
                     crop = cv2.resize(crop, (112, 112), interpolation=cv2.INTER_CUBIC)
 
-                from deepface import DeepFace
                 dfs = DeepFace.find(
                     img_path=crop,
                     db_path=self.db_path,

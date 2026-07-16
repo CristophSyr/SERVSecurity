@@ -126,10 +126,21 @@ def _init_state():
         "fps_history":      [],
         "latency_history":  [],
         "current_incident_id": "",
+        # Zona restringida — valores por defecto (porcentaje)
+        # Inicializarlos aqui evita el warning:
+        # "The widget with key 'zx1' was created with a default value
+        #  but also had its value set via the Session State API."
+        "zx1": 20, "zy1": 20, "zx2": 80, "zy2": 80,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
+
+    # Seleccionar fuente de video automaticamente segun el entorno.
+    # En Hugging Face (Linux) no hay camara local, usamos Webcam en Nube.
+    # En Windows usamos la Webcam Local.
+    if "video_source" not in st.session_state:
+        st.session_state.video_source = "Webcam en Nube" if IS_CLOUD else "Webcam Local"
 
 
 _init_state()
@@ -157,10 +168,17 @@ with st.sidebar:
 
     # ── Fuente de video ────────────────────────────────────────────────────
     st.markdown("#### Fuente de video")
+    _source_options = ["Webcam Local", "Cámara IP (Seguridad)", "Subir video", "Webcam en Nube"]
+    # En la nube no existe cámara local: pre-seleccionar y deshabilitar el selector
+    # para evitar que el usuario escoja una fuente que causaría un error fatal.
+    _default_source_idx = _source_options.index(st.session_state.video_source)
     video_source = st.radio(
         "Selecciona fuente",
-        ["Webcam Local", "Cámara IP (Seguridad)", "Subir video", "Webcam en Nube"],
+        _source_options,
+        index=_default_source_idx,
+        disabled=IS_CLOUD,  # En HF Spaces solo hay Webcam en Nube
         label_visibility="collapsed",
+        key="video_source",
     )
 
     ip_camera_url = None
@@ -198,11 +216,16 @@ with st.sidebar:
 
     col_a, col_b = st.columns(2)
     with col_a:
-        zone_x1 = st.slider("X1 %", 0, 90, 20, key="zx1")
-        zone_y1 = st.slider("Y1 %", 0, 90, 20, key="zy1")
+        # NO pasamos el argumento 'value' a los sliders: Streamlit tomara el valor
+        # de st.session_state[key] que ya inicializamos en _init_state().
+        # Pasar 'value' Y tener la key en session_state genera el warning:
+        # "widget with key 'zx1' was created with a default value but also had
+        # its value set via the Session State API."
+        zone_x1 = st.slider("X1 %", 0, 90, key="zx1")
+        zone_y1 = st.slider("Y1 %", 0, 90, key="zy1")
     with col_b:
-        zone_x2 = st.slider("X2 %", 10, 100, 80, key="zx2")
-        zone_y2 = st.slider("Y2 %", 10, 100, 80, key="zy2")
+        zone_x2 = st.slider("X2 %", 10, 100, key="zx2")
+        zone_y2 = st.slider("Y2 %", 10, 100, key="zy2")
 
     st.markdown("---")
 
