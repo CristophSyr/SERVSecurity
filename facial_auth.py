@@ -80,7 +80,9 @@ class FacialAuthenticator:
                 img_path=dummy_img,
                 db_path=self.db_path,
                 model_name=self.model_name,
-                detector_backend="skip",   # CRÍTICO: no intentar detectar cara en dummy
+                # CRÍTICO: Usar opencv aquí para que extraiga las caras reales
+                # de las fotos de cuerpo/fondo guardadas en la carpeta.
+                detector_backend="opencv",
                 enforce_detection=False,
                 silent=True,
             )
@@ -108,6 +110,13 @@ class FacialAuthenticator:
             return
 
         with self._lock:
+            if not self._index_ready:
+                # Todavía se está pre-construyendo el índice con opencv.
+                # Si dejamos pasar esto, DeepFace intentará construir el índice
+                # aquí mismo usando "skip", lo cual corromperá las representaciones.
+                track.auth_pending = False
+                return
+
             if track.auth_pending:
                 return
             track.auth_pending = True

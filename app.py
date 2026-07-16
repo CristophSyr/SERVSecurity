@@ -310,6 +310,7 @@ with st.sidebar:
                     except OSError:
                         pass
                 st.success(f"✅ **{safe_name}** guardado correctamente.")
+                st.session_state.running = False
                 st.rerun()
 
         st.markdown("---")
@@ -341,6 +342,7 @@ with st.sidebar:
                     except OSError:
                         pass
                 st.success(f"✅ **{safe_name}** guardado correctamente.")
+                st.session_state.running = False
                 st.rerun()
 
         st.markdown("---")
@@ -370,6 +372,7 @@ with st.sidebar:
                             except OSError:
                                 pass
                         st.success(f"🗑️ **{face_path.stem}** eliminado.")
+                        st.session_state.running = False
                         st.rerun()
         else:
             st.info("No hay personas registradas aún.")
