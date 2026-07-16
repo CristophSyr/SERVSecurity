@@ -213,7 +213,6 @@ class RulesEngine:
                 
                 if needs_auth and not track.auth_pending:
                     if now.timestamp() - track.last_auth_time > 1.5: # 1.5 seg entre intentos
-                        track.auth_pending = True
                         track.last_auth_time = now.timestamp()
                         track.auth_attempts += 1
                         self.authenticator.authenticate_async(crop, track)
